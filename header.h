@@ -20,53 +20,39 @@ typedef enum{
     DB_QUERY_FAIL,
 }errList;
 
-char *errString[] = 
-{
-    "Null string",
-    "Arguemnt not enough",
-    "Arguemnt not match",
-    "Folder has not exist",
-    "File has not exist",
-    "ROC year not support",
-    "Specified stock not support now",
-    "Database not found",
-    "Database table create fail",
-    "Database table insert fail",
-    "Database table query fail",
-};
 void output_err(unsigned int err)
 {
     switch(err)
     {
         case ARG_NOT_ENOUGH: 
-            DEBUG_OUTPUT("Argument error : %s\n", errString[ARG_NOT_ENOUGH]);
+            DEBUG_OUTPUT("Argument error : Arguemnt not enough\n");
             break;
         case ARG_NOT_MATCH: 
-            DEBUG_OUTPUT("Argument error : %s \n", errString[ARG_NOT_MATCH]);
+            DEBUG_OUTPUT("Argument error : Arguemnt not match \n" );
             break;
         case FOLDER_NOT_MOUNT:
-            DEBUG_OUTPUT("File operation error : %s => %s\n", errString[FOLDER_NOT_MOUNT], strerror(errno) );
+            DEBUG_OUTPUT("File operation error : Folder has not exist => %s\n",  strerror(errno) );
             break;
         case FILE_NOT_FOUND:
-            DEBUG_OUTPUT("File operation error : %s => %s\n", errString[FILE_NOT_FOUND], strerror(errno) );
+            DEBUG_OUTPUT("File operation error : File has not exist => %s\n",  strerror(errno) );
             break;
         case ROC_YEAR_NOT_SUPPORT:
-            DEBUG_OUTPUT("Arguemnt error : %s\n", errString[ROC_YEAR_NOT_SUPPORT]);
+            DEBUG_OUTPUT("Arguemnt error : ROC year not support\n");
             break;
         case ARGU_NOT_SUPPORT:
-            DEBUG_OUTPUT("Argument error : %s\n", errString[ARGU_NOT_SUPPORT]);
+            DEBUG_OUTPUT("Argument error : Specified stock not support now\n");
             break;
         case DB_NOT_FOUND:
-            DEBUG_OUTPUT("Database error : %s\n", errString[DB_NOT_FOUND]);
+            DEBUG_OUTPUT("Database error : Database not found\n");
             break;
         case DB_CREATE_FAIL:
-            DEBUG_OUTPUT("Database error : %s\n", errString[DB_CREATE_FAIL]);
+            DEBUG_OUTPUT("Database error : Database table create fail\n");
             break;
         case DB_INSERT_FAIL:
-            DEBUG_OUTPUT("Database error : %s\n", errString[DB_INSERT_FAIL]);
+            DEBUG_OUTPUT("Database error : Database table insert fail\n");
             break;
         case DB_QUERY_FAIL:
-            DEBUG_OUTPUT("Database error : %s\n", errString[DB_QUERY_FAIL]);
+            DEBUG_OUTPUT("Database error : Database table query fail\n");
             break;
         default:
             DEBUG_OUTPUT("General error : %d\n", err);

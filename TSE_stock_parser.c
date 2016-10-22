@@ -63,6 +63,9 @@ void closeDB()
 
 int main(int argc, char *argv[])
 {
+    // output compiled date and time 
+    DEBUG_OUTPUT("Compiled date : \t[%s  %s] \n", __DATE__, __TIME__);
+
     int rows=0, cols =0;
     int i = 0, j = 0 ;
     char outputPath[PATH_LEN];
@@ -98,10 +101,13 @@ int main(int argc, char *argv[])
         DEBUG_OUTPUT("Folder doesn't exist\n");
         exit(0);
     }
+    DEBUG_OUTPUT("Output folder  : \t[%s] \n", outputPath);
+    DEBUG_OUTPUT("Input folder: \t[%s] \n", inputPath);
 
     // check trading day list
     memset(buf, 0x0, sizeof(buf));
-    sprintf(buf, "%s/%s", outputPath, TSE_DATE_CLASSIFIC);
+    sprintf(buf, "%s/%s", inputPath, TSE_DATE_CLASSIFIC);
+    DEBUG_OUTPUT("DB file: \t[%s] \n", buf);
     if (sqlite3_open_v2(buf, &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL))
     {
         // db doesn't exist
@@ -109,6 +115,7 @@ int main(int argc, char *argv[])
         closeDB();
         exit(0);
     }
+    DEBUG_OUTPUT("DB open successfully \n");
 
     // query all trading days.
     ret = sqlite3_get_table(db , CMD_QUERY_TABLE, &table, &rows, &cols, &errMsg);
@@ -119,6 +126,8 @@ int main(int argc, char *argv[])
         closeDB();
         exit(0);
     }
+
+    DEBUG_OUTPUT("List all date: \n");
 
     // get daily data sequencely
     for(i = 0 ; i< rows; i++)
@@ -132,7 +141,8 @@ int main(int argc, char *argv[])
         if ((val = strtol(table[i*cols+1], &endptr, 10))==1) 
         {
             // trading day
-            sprintf(buf, "%s/%s", outputPath, table[i*cols]);
+            // sprintf(buf, "%s/%s", outputPath, table[i*cols]);
+            DEBUG_OUTPUT("%s\t[%s]\n", table[i*cols], table[i*cols+1]);
 
         }
 
