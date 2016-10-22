@@ -101,6 +101,7 @@ int main(int argc, char **argv)
 
     time_t t;
     int i=0;
+    int ret=0;
     char *ptr = NULL;
     struct tm  time_now;
     struct tm  time_ROC;
@@ -172,6 +173,7 @@ int main(int argc, char **argv)
         exit(0);
     }
 
+    DEBUG_OUTPUT("-------------------------------Begin-------------------------------\n");
     
     //從當天開始倒數
     for(i = 0; i< dayBack; i++)
@@ -187,7 +189,9 @@ int main(int argc, char **argv)
         // 也許1000年之後是XXXX
         if( time_ROC.tm_year>100 )
         {
-            sprintf(yearROCFormat  ,"%d", time_ROC.tm_year);
+            // mark 2016/10/22 
+            // memset(yearROCFormat, 0x0, sizeof(outputFile));
+            // sprintf(yearROCFormat  ,"%d", time_ROC.tm_year);
         }
         else 
         {
@@ -197,12 +201,14 @@ int main(int argc, char **argv)
         }
 
         // 下載每日收盤行情
-        // 先產生下載的檔案名稱
-        sprintf(outputFile, "%s/%04d%02d%02d.csv", outputPath, time_now.tm_year+1900, time_now.tm_mon, time_now.tm_mday);
+        // 先拼出下載的檔案名稱 民國
+        memset(outputFile, 0x0, sizeof(outputFile));
+        sprintf(outputFile, "%s/%03d%02d%02d.csv", outputPath, time_ROC.tm_year, time_ROC.tm_mon, time_ROC.tm_mday);
         DEBUG_OUTPUT("output file %s\n", outputFile);
-        if(stat(outputFile, &st) < 0) // 不存在才抓
+        if(stat(outputFile, &st) < 0) // 檔案不存在才抓
         {
             DEBUG_OUTPUT("spell urll\n");
+            memset(fetchURL, 0x0, sizeof(outputFile));
             sprintf(fetchURL , "%s%03d%%2F%02d%%2F%02d%s", 
                             strURL3A,
                             time_ROC.tm_year,
@@ -227,8 +233,16 @@ int main(int argc, char **argv)
                     curl_easy_setopt(curl, CURLOPT_WRITEDATA, fp);
                     curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, cmd); 
                     res = curl_easy_perform(curl);
-                    if( 0 != res )
-                        DEBUG_OUTPUT("[%s]\n", cmd);
+                    if(CURLE_OK != res )
+                    {
+                        switch(res)
+                        {
+                            default:
+                                DEBUG_OUTPUT("rror while fetching '%s' : err(%d), %s => %s\n", fetchURL, res, curl_easy_strerror(res), cmd);
+                                break;
+                        }
+                    }
+
                     /* always cleanup */
                     curl_easy_cleanup(curl);
                     fclose(fp);
@@ -236,10 +250,41 @@ int main(int argc, char **argv)
             }
         }
         else 
+            DEBUG_OUTPUT("File exists\n");
+
+        // check the size  of file, small than 400 bytes should be not a trading day.
+        DEBUG_OUTPUT("Check file %s's size\n", outputFile);
+        ret =0;
+        if(0 == (ret = stat(outputFile, &st) ))
         {
-            DEBUG_OUTPUT("-------------------------------Next one-------------------------------\n");
-            continue;
+                DEBUG_OUTPUT("File size: %d\n", (int)st.st_size);
+                if(400 > st.st_size) 
+                {
+                    DEBUG_OUTPUT("Date : %03d%02d%02d not a trading day, ignore it\n", time_ROC.tm_year, time_ROC.tm_mon, time_ROC.tm_mday);
+                    // ignore this day 
+                    i--;
+                }
         }
+        else 
+        {
+            output_err(FILE_NOT_FOUND);
+        }
+
+        DEBUG_OUTPUT("-------------------------------Next one-------------------------------\n");
+        // decreasing date
+        // NOTE: satauday may be a trading day. 
+        if((time_ROC.tm_mday--)<=0)
+        {
+            time_ROC.tm_mday = 31;
+            if((time_ROC.tm_mon --)<=0)
+            {
+                time_ROC.tm_year--; 
+                time_ROC.tm_mon =12;
+            }
+        }
+        DEBUG_OUTPUT("Next date : %03d%02d%02d\n", time_ROC.tm_year, time_ROC.tm_mon, time_ROC.tm_mday);
+
+        continue;
         // 存在，下載次一日的
     }
 
