@@ -3,19 +3,22 @@
 #include <string.h>
 #include <time.h>
 #include <curl/curl.h>
-#include <errno.h>
 #include <sys/stat.h>
+#include <sqlite3.h>
+#include "header.h"
 
 #define EXECNAME
-
-#define DEBUG_OUTPUT( formats, args...) do{ \
-                fprintf(stderr, formats, ##args); \
-            }while(0);
 
 #define PATH_LEN 512
 #define URL_LEN 4096
 #define FILENAME_LEN 256
 
+// database command
+// 
+#define CMD_CREATE_TABLE    "CREATE TABLE IF NOT EXISTS TSETradeDay( date int, tradingDay bit);"
+// "INSERT INTO Contact VALUES(NULL, 'Fred', '09990123456');";
+#define CMD_INSERT_TABLE    "INSERT INTO TSETradeDay VALUES"
+#define CMD_QUERY_TABLE     "SELECT * FROM TSETradeDay;"
 
 //////////////////////////////////////////////////////////////// 
 // Target web site string  
@@ -32,25 +35,7 @@
 char *strURL3A="http://www.twse.com.tw/ch/trading/exchange/MI_INDEX/MI_INDEX.php?download=csv&qdate=";
 char *strURL3B="&selectType=ALLBUT0999";
 
-typedef enum{
-    NOT_ENOUGH,
-    NOT_MATCH,
-    FOLDER_NOT_MOUNT,
-    FILE_NOT_FOUND,
-    ROC_YEAR_NOT_SUPPORT,
-    ARGU_NOT_SUPPORT,
-}errList;
 
-char *errString[] = 
-{
-    ""
-    "Arguemnt not enough",
-    "Arguemnt not match",
-    "Folder has not exist",
-    "File has not exist",
-    "ROC year not support",
-    "Specified stock not support now",
-};
 
 // 下載的資料天數
 static int dayBack=1;
@@ -58,40 +43,29 @@ static int dayBack=1;
 static int currentDayBack; 
 // 指定的股號
 int numStock;
+
+// reference to database 
+sqlite3 *db = NULL;
+// reference to table 
+char **table = NULL;
 //////////////////////////////////////////////////////////////////////////
 // Declaration
 void usage();
-void output_err(unsigned int err)
-{
-    switch(err)
-    {
-        case NOT_ENOUGH: 
-            DEBUG_OUTPUT("Argument error : %s\n", errString[NOT_ENOUGH]);
-            break;
-        case NOT_MATCH: 
-            DEBUG_OUTPUT("Argument error : %s \n", errString[NOT_MATCH]);
-            break;
-        case FOLDER_NOT_MOUNT:
-            DEBUG_OUTPUT("File operation error : %s => %s\n", errString[FOLDER_NOT_MOUNT], strerror(errno));
-            break;
-        case FILE_NOT_FOUND:
-            DEBUG_OUTPUT("File operation error : %s => %s\n", errString[FILE_NOT_FOUND], strerror(errno));
-            break;
-        case ROC_YEAR_NOT_SUPPORT:
-            DEBUG_OUTPUT("Arguemnt error : %s\n", errString[ROC_YEAR_NOT_SUPPORT]);
-            break;
-        case ARGU_NOT_SUPPORT:
-            DEBUG_OUTPUT("Argument error : %s\n", errString[ARGU_NOT_SUPPORT]);
-            break;
-        default:            
-            DEBUG_OUTPUT("General error : %d\n", err);
-            break;
-    }
-}
+
 size_t write_data(void* ptr, size_t size, size_t nmemb, FILE *stream)
 {
     size_t written = fwrite (ptr, size, nmemb, stream);
     return written ; 
+}
+
+void closeDB()
+{
+    /* free */
+    if(NULL != table)
+        sqlite3_free_table(table);
+
+    /* close database */
+    sqlite3_close(db);
 }
 
 int main(int argc, char **argv)
@@ -99,8 +73,11 @@ int main(int argc, char **argv)
     // output compiled date and time 
     DEBUG_OUTPUT("Compiled date : \t[%s  %s] \n", __DATE__, __TIME__);
 
+    int rows=0, cols=0;
+    char *errMsg = NULL;
+
     time_t t;
-    int i=0;
+    int i=0, j=0;
     int ret=0;
     char *ptr = NULL;
     struct tm  time_now;
@@ -135,7 +112,7 @@ int main(int argc, char **argv)
         }
         default:
         {
-            output_err(NOT_ENOUGH);
+            output_err(ARG_NOT_ENOUGH);
             usage();
             exit(0);
             break;
@@ -156,9 +133,30 @@ int main(int argc, char **argv)
     //檢查輸出目錄是否存在
     if(!(0 == stat(outputPath, &st) && S_ISDIR(st.st_mode)))
     {
-        DEBUG_OUTPUT("Folder doesn't exist\n");
         output_err(FOLDER_NOT_MOUNT);
-    // 不嘗試產生資料夾，可能沒有掛好
+        DEBUG_OUTPUT("%s\n", strerror(errno));
+        // 不嘗試產生資料夾，可能沒有掛好partition
+        exit(0);
+    }
+
+    memset(cmd, 0x0, sizeof(cmd));
+    sprintf(cmd, "%s/%s", outputPath, TSE_DATE_CLASSIFIC);
+
+    /* open sqlite3 database */
+    if (sqlite3_open_v2(cmd, &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL)) 
+    {
+        output_err(DB_NOT_FOUND);
+        closeDB();
+        exit(0);
+    }
+
+    /* create table */
+    ret = sqlite3_exec(db, CMD_CREATE_TABLE, 0, 0, &errMsg);
+    if( SQLITE_OK != ret && SQLITE_ROW != ret && SQLITE_DONE != ret )
+    {
+        output_err(DB_CREATE_FAIL);
+        DEBUG_OUTPUT("Cause: \t[%s]\n", errMsg);
+        closeDB();
         exit(0);
     }
 
@@ -170,10 +168,12 @@ int main(int argc, char **argv)
     {
         DEBUG_OUTPUT("ROC year 100 not support (%d)\n", time_ROC.tm_year);
         output_err(ROC_YEAR_NOT_SUPPORT);
+        closeDB();
         exit(0);
     }
 
     DEBUG_OUTPUT("-------------------------------Begin-------------------------------\n");
+
     
     //從當天開始倒數
     for(i = 0; i< dayBack; i++)
@@ -257,29 +257,60 @@ int main(int argc, char **argv)
         ret =0;
         if(0 == (ret = stat(outputFile, &st) ))
         {
-                DEBUG_OUTPUT("File size: %d\n", (int)st.st_size);
-                if(400 > st.st_size) 
-                {
-                    DEBUG_OUTPUT("Date : %03d%02d%02d not a trading day, ignore it\n", time_ROC.tm_year, time_ROC.tm_mon, time_ROC.tm_mday);
-                    // ignore this day 
-                    i--;
-                }
+            DEBUG_OUTPUT("File size: %d\n", (int)st.st_size);
+            // This day not a trading day.
+            if(400 > st.st_size) 
+            {
+                DEBUG_OUTPUT("Date : %03d%02d%02d not a trading day, ignore it\n", time_ROC.tm_year, time_ROC.tm_mon, time_ROC.tm_mday);
+                // ignore this day 
+                i--;
+                // reocde holiday
+                // sprintf(cmd , "echo %03d%02d%02d>> %s/%s", time_ROC.tm_year, time_ROC.tm_mon, time_ROC.tm_mday, outputPath,FILE_HOLIDAY);
+                // output to sqlite db
+                memset(cmd, 0x0, sizeof(cmd));
+                sprintf(cmd, "%s( %03d%02d%02d , 0 )", CMD_INSERT_TABLE, time_ROC.tm_year, time_ROC.tm_mon, time_ROC.tm_mday );
+            }
+            else 
+            {
+                // reocde trading day.
+                // sprintf(cmd , "echo %03d%02d%02d>> %s/%s", time_ROC.tm_year, time_ROC.tm_mon, time_ROC.tm_mday, outputPath, FILE_TRADING_DAY);
+                // output to sqlite db
+                memset(cmd, 0x0, sizeof(cmd));
+                sprintf(cmd, "%s( %03d%02d%02d , 1 )", CMD_INSERT_TABLE, time_ROC.tm_year, time_ROC.tm_mon, time_ROC.tm_mday );
+                
+            }
+
+            // system(cmd);
+            // insert to Database
+            /*
+             * ret = sqlite3_exec(db, cmd, NULL, NULL, &errMsg);
+            if( SQLITE_OK != ret && SQLITE_ROW != ret && SQLITE_DONE != ret )
+            {
+                output_err(DB_INSERT_FAIL);
+                DEBUG_OUTPUT("Cause: \t[%s]\n", errMsg);
+            }
+            */
         }
         else 
         {
             output_err(FILE_NOT_FOUND);
+            DEBUG_OUTPUT("%s\n", strerror(errno));
         }
 
         DEBUG_OUTPUT("-------------------------------Next one-------------------------------\n");
         // decreasing date
         // NOTE: satauday may be a trading day. 
-        if((time_ROC.tm_mday--)<=0)
+        time_ROC.tm_mday--;
+        if(0 >= time_ROC.tm_mday)
         {
             time_ROC.tm_mday = 31;
-            if((time_ROC.tm_mon --)<=0)
+            time_ROC.tm_mon --;
+            DEBUG_OUTPUT("Previous month\n");
+            if(0 >= time_ROC.tm_mon)
             {
                 time_ROC.tm_year--; 
                 time_ROC.tm_mon =12;
+                DEBUG_OUTPUT("Previous year\n");
             }
         }
         DEBUG_OUTPUT("Next date : %03d%02d%02d\n", time_ROC.tm_year, time_ROC.tm_mon, time_ROC.tm_mday);
@@ -288,11 +319,28 @@ int main(int argc, char **argv)
         // 存在，下載次一日的
     }
 
-    //日期檢查    
     //每日收盤行情
-              //string('證券代號,證券名稱,成交股數,成交筆數,成交金額,開盤價,最高價,最低價,收盤價,漲跌(+/-),漲跌價差,最後揭示買價,最後揭示買量,最後揭示賣價,最後揭示賣量,本益比'+'\n')
-}
+    //string('證券代號,證券名稱,成交股數,成交筆數,成交金額,開盤價,最高價,最低價,收盤價,漲跌(+/-),漲跌價差,最後揭示買價,最後揭示買量,最後揭示賣價,最後揭示賣量,本益比'+'\n')
+    //
+    // query Database
+    ret = sqlite3_get_table(db , CMD_QUERY_TABLE, &table, &rows, &cols, &errMsg);
+    if( SQLITE_OK != ret && SQLITE_ROW != ret && SQLITE_DONE != ret )
+    {
+        output_err(DB_QUERY_FAIL);
+        DEBUG_OUTPUT("Cause: \t[%s]\n", errMsg);
+    }
+    else
+    {
+        for (i=0;i<rows;i++) 
+        {
+            for (j=0;j<cols;j++) 
+                 DEBUG_OUTPUT("%s\t", table[i*cols+j]);
+            DEBUG_OUTPUT("\n");
+        }
+    }
 
+    closeDB();
+}
 
 void usage()
 {
