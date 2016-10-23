@@ -12,12 +12,15 @@ typedef enum{
     ARG_NOT_MATCH,
     FOLDER_NOT_MOUNT,
     FILE_NOT_FOUND,
+    FILE_OPEN_FAIL,
+    FILE_READ_FAIL,
     ROC_YEAR_NOT_SUPPORT,
     ARGU_NOT_SUPPORT,
     DB_NOT_FOUND,
     DB_CREATE_FAIL,
     DB_INSERT_FAIL,
     DB_QUERY_FAIL,
+    LC_SET_FAIL,
 }errList;
 
 void output_err(unsigned int err)
@@ -36,6 +39,12 @@ void output_err(unsigned int err)
         case FILE_NOT_FOUND:
             DEBUG_OUTPUT("File operation error : File has not exist => %s\n",  strerror(errno) );
             break;
+        case FILE_OPEN_FAIL:
+            DEBUG_OUTPUT("File operation error : File open fail=> %s\n",  strerror(errno) );
+            break;
+        case FILE_READ_FAIL:
+            DEBUG_OUTPUT("File operation error : File read fail=> %s\n",  strerror(errno) );
+            break;
         case ROC_YEAR_NOT_SUPPORT:
             DEBUG_OUTPUT("Arguemnt error : ROC year not support\n");
             break;
@@ -53,6 +62,10 @@ void output_err(unsigned int err)
             break;
         case DB_QUERY_FAIL:
             DEBUG_OUTPUT("Database error : Database table query fail\n");
+            break;
+
+        case LC_SET_FAIL:
+            DEBUG_OUTPUT("Locale error : Set locale failed \n");
             break;
         default:
             DEBUG_OUTPUT("General error : %d\n", err);
