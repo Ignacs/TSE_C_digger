@@ -16,14 +16,16 @@
 #define PATH_LEN 1024 
 #define FILENAME_LEN 256
 #define BUFF_LEN 4096
-#define STOCK_NAME_LEN 32 
 
 #define ARGU_INPUT_PATH 1
 #define ARGU_OUTPUT_PATH 2
 
 #define CMD_QUERY_TABLE     "SELECT * FROM TSETradeDay;"
 
+#define STOCK_ID_LEN        64 
+#define STOCK_VALUE_LEN     64 
 #define STOCK_ATTR_NUM      16
+#define STOCK_NAME_LEN      32 
 
 // reference to database 
 sqlite3 *db = NULL;
@@ -31,7 +33,7 @@ sqlite3 *db = NULL;
 char **table = NULL;
 
 struct __STOCK__{
-    unsigned long int id;                         // "靡ㄩ腹"
+    wchar_t id[STOCK_ID_LEN];                         // 靡ㄩ腹
     wchar_t name[STOCK_NAME_LEN];   // "靡ㄩ嘿"
     unsigned long int stock;             // "Θユ计"
     unsigned long int trade;             // "Θユ掸计"
@@ -55,18 +57,110 @@ void usage(char *app_name)
     DEBUG_OUTPUT( "%s <Folder contains csv fllies download from TSE> <ouptut foloder>\n" , app_name)
 }
 
+// return :     length of value
+int searchInDoubleQuotea(wchar_t *bufWC, wchar_t *buf)
+{
+    // passing string [XXX","YYY", ...]
+    wchar_t *pCurr = NULL;
+    int i =0;
+
+    if(NULL == bufWC)
+    {
+        output_err(STRING_NULL);
+        return 0;
+    }
+    pCurr = bufWC;
+
+    i = 0;
+    while(L'"' != *(pCurr+i)) 
+    {
+DEBUG_OUTPUT(">>> %d => %lc\n", __LINE__, *(pCurr+i));
+        DEBUG_OUTPUT("??? : >>>%lc\n ", *pCurr);
+        *(buf+i) = *(pCurr+i);
+        i++;
+    }
+
+    return i;
+}
+
+unsigned int wcsConvToU_10b(wchar_t *wcs)
+{
+    wchar_t *ptr = NULL ;
+    int i = 0;
+    char buf[BUFF_LEN];
+
+    if( NULL == wcs)
+        return 0;
+    ptr = wcs;
+    
+DEBUG_OUTPUT(">>> string [%ls] \n", wcs);
+    for(i = 0; 1; i++)
+    {
+DEBUG_OUTPUT(">>> %lc \n",  *(ptr+i));
+        switch(*(ptr+i))
+        {
+            case L'0':
+                buf[i] = '0';
+                break;
+            case L'1':
+                buf[i] = '1';
+                break;
+            case L'2':
+                buf[i] = '2';
+                break;
+            case L'3':
+                buf[i] = '3';
+                break;
+            case L'4':
+                buf[i] = '4';
+                break;
+            case L'5':
+                buf[i] = '5';
+                break;
+            case L'6':
+                buf[i] = '6';
+                break;
+            case L'7':
+                buf[i] = '7';
+                break;
+            case L'8':
+                buf[i] = '8';
+                break;
+            case L'9':
+                buf[i] = '9';
+                break;
+            default : 
+DEBUG_OUTPUT(">>> %ld \n",  strtol( buf, NULL, 10));
+                return strtol( buf, NULL, 10);
+                break;
+        }
+    }
+
+DEBUG_OUTPUT(">>> %ld \n",  strtol( buf, NULL, 10));
+    return 0;
+}
+
 struct __STOCK__ * data_pasrer(wchar_t *bufWC)
 {
     int itemCount = 0, i = 0;
     unsigned char encounterFirstItem = 0;
-    unsigned char encounterETFPrefix = 0;
+    wchar_t value[STOCK_VALUE_LEN];
+    wchar_t *pVal = NULL;
+    unsigned int len = 0;
 
+    if(NULL == bufWC)
+    {
+        output_err(STRING_NULL);
+        return NULL;
+    }
 
     // "靡ㄩ腹","靡ㄩ嘿","Θユ计","Θユ掸计","Θユ肂","秨絃基","程蔼基","程基","Μ絃基","害禴(+/-)","害禴基畉","程处ボ禦基","程处ボ禦秖","程处ボ芥基","程处ボ芥秖","セ痲ゑ"
     memset(&stockData, 0x0, sizeof(stockData));
 
-    DEBUG_OUTPUT("Target string: >>>%ls ", bufWC);
+    DEBUG_OUTPUT("parsing string: >>>%ls ", bufWC);
 
+    // initlal 
+    i = 0;
     do
     {
 #if DEBUG
@@ -74,19 +168,9 @@ struct __STOCK__ * data_pasrer(wchar_t *bufWC)
 #endif
         switch(bufWC[i])
         {
-            case L'=': // ETF prefix, dont care
+            case L'=': 
             {
-                if( 0 == encounterETFPrefix )
-                {
-                    DEBUG_OUTPUT("Another ETF found\n");
-                    encounterETFPrefix = 1;
-                }
-                else 
-                {
-                    output_err(DATA_FORMAT_ERROR);
-                    DEBUG_OUTPUT("Last charater : %lc \n", bufWC[i]);
-                    return NULL;
-                }
+                // ETF prefix, dont care
                 break;
             }
             case L'\n':
@@ -95,39 +179,61 @@ struct __STOCK__ * data_pasrer(wchar_t *bufWC)
                 return NULL;
                 break;
             }
-            case '\"':
+            case L'\"':
             {
                 if( 0 == encounterFirstItem )
-                    encounterFirstItem = 1;
-
-                /*
-                while ((L'\"' != bufWC[i++]) && (STOCK_ATTR_NUM > itemCount))
                 {
+                    DEBUG_OUTPUT("Set flag to search value. \n");
+                    encounterFirstItem = 1;
+                }
 
-                    searchPairDoubleQuotea();
-                    //    int id;                         // "靡ㄩ腹"
-                    stockData.id = wcstold();
-                    wcstoul ( __nptr,  __endptr, __base)
+DEBUG_OUTPUT(">>> check data, first = %lc ,  found items = %d\n", bufWC[i], itemCount);
+                i++;
+                while ((L'\"' != (bufWC[i])) && (STOCK_ATTR_NUM > itemCount))
+                {
+DEBUG_OUTPUT(">============================================<\n");
+                    // wchar_t id[];                         // 靡ㄩ腹
+                    pVal = stockData.id;
+                    memset(pVal, 0x0, sizeof(pVal));
+                    len = searchInDoubleQuotea(&bufWC[i], pVal);
+DEBUG_OUTPUT(">>> get string [%d](%ls)\n",  len, pVal);
+#if 0
+                    memset(pVal, 0x0, sizeof(pVal));
                     //    wchar_t name[STOCK_NAME_LEN];   // "靡ㄩ嘿"
+                    pVal = value;
+                    memset(pVal, 0x0, sizeof(pVal));
                     //    unsigned int stock;             // "Θユ计"
+                    memset(pVal, 0x0, sizeof(pVal));
+                    stockData.id = wcsConvToU_10b( pVal);
                     //    unsigned int trade;             // "Θユ掸计"
+                    memset(pVal, 0x0, sizeof(pVal));
                     //    unsigned int vol;               // "Θユ肂"
-                    //                    wcstol
+                    memset(pVal, 0x0, sizeof(pVal));
                     //    float open;            // "秨絃基"
+                    memset(pVal, 0x0, sizeof(pVal));
                     //    float high;            // "程蔼基"
+                    memset(pVal, 0x0, sizeof(pVal));
                     //    float low;            // "程基"
+                    memset(pVal, 0x0, sizeof(pVal));
                     //    float close;            // "Μ絃基"
+                    memset(pVal, 0x0, sizeof(pVal));
                     //    unsigned char sign;             // "害禴(+/-)"
+                    memset(pVal, 0x0, sizeof(pVal));
                     //    float diff;            // "害禴基畉"
+                    memset(pVal, 0x0, sizeof(pVal));
                     //    float buy;             // "程处ボ禦基"
+                    memset(pVal, 0x0, sizeof(pVal));
                     //    float buy_vol;         // "程处ボ禦秖"
+                    memset(pVal, 0x0, sizeof(pVal));
                     //    float sell;            // "程处ボ芥基"
+                    memset(pVal, 0x0, sizeof(pVal));
                     //    float sell_vol;        // "程处ボ芥秖"
+                    memset(pVal, 0x0, sizeof(pVal));
                     //    float epr;             // "セ痲ゑ"
-                    itemCount++;
-                    */
-
-
+#endif
+                    i=i+len+1; // '\"'+<data>+'\"'
+                }
+                itemCount++;
                 break;
             }
             case L',': 
@@ -279,13 +385,11 @@ int csvhandler(char *csvFile)
     //argv[2] number of lines to skip
     //argv[3] length of longest value (in characters)
 
-    FILE *pf;
+    FILE *pf = NULL;
     struct stat st;
-    char pTempValHolder[BUFF_LEN];
-    wint_t c;
+    wint_t c ;
     wchar_t bufWC[BUFF_LEN];
     unsigned int vcpm; //value character marker
-    int QuotationOnOff; //0 - off, 1 - on
     int i = 0 ;
     int ret = 0 ;
 
@@ -301,9 +405,6 @@ int csvhandler(char *csvFile)
         DEBUG_OUTPUT("open %s successfully\n", csvFile);
         rewind(pf);
 
-        vcpm = 0;
-        QuotationOnOff = 0;
-
         while( (c = fgetwc(pf)) != WEOF)
         {
 #if DEBUG
@@ -313,33 +414,14 @@ int csvhandler(char *csvFile)
             {
                 case ',':
                 {
-                    if(!QuotationOnOff) 
-                    {
-                        pTempValHolder[vcpm] = '\0';
-                        vcpm = 0;
-                    }
                     break;
                 }
                 case '\n':
                 {
-                    pTempValHolder[vcpm] = '\0';
-                    vcpm = 0;
                     break;
                 }
                 case '\"':
                 {
-                    if(!QuotationOnOff) 
-                    {
-                        QuotationOnOff = 1;
-                        pTempValHolder[vcpm] = c;
-                        vcpm++;
-                    }
-                    else 
-                    {
-                        QuotationOnOff = 0;
-                        pTempValHolder[vcpm] = c;
-                        vcpm++;
-                    }
                     break;
                 }
                 case L'琩':
@@ -404,7 +486,7 @@ int csvhandler(char *csvFile)
                             return 0;
                         }
                         // pass to ETF_wcs_handler and return a struct store specified ETF's data.
-                        if((pstockData = data_pasrer(bufWC) )== NULL)
+                        if((pstockData = data_pasrer(bufWC) ) == NULL)
                             continue;
                         else // pass to function to store in DB.
                         {
@@ -417,8 +499,6 @@ int csvhandler(char *csvFile)
 
                 default:
                 {
-                    pTempValHolder[vcpm] = c;
-                    vcpm++;
                     break;
                 }
             }
