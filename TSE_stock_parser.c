@@ -31,22 +31,22 @@ sqlite3 *db = NULL;
 char **table = NULL;
 
 struct __STOCK__{
-    unsigned long int id;                         // "è­‰åˆ¸ä»£è™Ÿ"
-    wchar_t name[STOCK_NAME_LEN];   // "è­‰åˆ¸åç¨±"
-    unsigned long int stock;             // "æˆäº¤è‚¡æ•¸"
-    unsigned long int trade;             // "æˆäº¤ç­†æ•¸"
-    unsigned long int vol;               // "æˆäº¤é‡‘é¡"
-    float open;            // "é–‹ç›¤åƒ¹"
-    float high;            // "æœ€é«˜åƒ¹"
-    float low;            // "æœ€ä½Žåƒ¹"
-    float close;            // "æ”¶ç›¤åƒ¹"
-    unsigned char sign;             // "æ¼²è·Œ(+/-)"
-    float diff;            // "æ¼²è·Œåƒ¹å·®"
-    float buy;             // "æœ€å¾Œæ­ç¤ºè²·åƒ¹"
-    float buy_vol;         // "æœ€å¾Œæ­ç¤ºè²·é‡"
-    float sell;            // "æœ€å¾Œæ­ç¤ºè³£åƒ¹"
-    float sell_vol;        // "æœ€å¾Œæ­ç¤ºè³£é‡"
-    float epr;             // "æœ¬ç›Šæ¯”"â†µ
+    unsigned long int id;                         // "ÃÒ¨é¥N¸¹"
+    wchar_t name[STOCK_NAME_LEN];   // "ÃÒ¨é¦WºÙ"
+    unsigned long int stock;             // "¦¨¥æªÑ¼Æ"
+    unsigned long int trade;             // "¦¨¥æµ§¼Æ"
+    unsigned long int vol;               // "¦¨¥æª÷ÃB"
+    float open;            // "¶}½L»ù"
+    float high;            // "³Ì°ª»ù"
+    float low;            // "³Ì§C»ù"
+    float close;            // "¦¬½L»ù"
+    unsigned char sign;             // "º¦¶^(+/-)"
+    float diff;            // "º¦¶^»ù®t"
+    float buy;             // "³Ì«á´¦¥Ü¶R»ù"
+    float buy_vol;         // "³Ì«á´¦¥Ü¶R¶q"
+    float sell;            // "³Ì«á´¦¥Ü½æ»ù"
+    float sell_vol;        // "³Ì«á´¦¥Ü½æ¶q"
+    float epr;             // "¥»¯q¤ñ"
 }stockData, *pstockData;
 
 int csvhandler(char *csvFile);
@@ -62,10 +62,10 @@ struct __STOCK__ * data_pasrer(wchar_t *bufWC)
     unsigned char encounterETFPrefix = 0;
 
 
-    // "è­‰åˆ¸ä»£è™Ÿ","è­‰åˆ¸åç¨±","æˆäº¤è‚¡æ•¸","æˆäº¤ç­†æ•¸","æˆäº¤é‡‘é¡","é–‹ç›¤åƒ¹","æœ€é«˜åƒ¹","æœ€ä½Žåƒ¹","æ”¶ç›¤åƒ¹","æ¼²è·Œ(+/-)","æ¼²è·Œåƒ¹å·®","æœ€å¾Œæ­ç¤ºè²·åƒ¹","æœ€å¾Œæ­ç¤ºè²·é‡","æœ€å¾Œæ­ç¤ºè³£åƒ¹","æœ€å¾Œæ­ç¤ºè³£é‡","æœ¬ç›Šæ¯”"â†µ
+    // "ÃÒ¨é¥N¸¹","ÃÒ¨é¦WºÙ","¦¨¥æªÑ¼Æ","¦¨¥æµ§¼Æ","¦¨¥æª÷ÃB","¶}½L»ù","³Ì°ª»ù","³Ì§C»ù","¦¬½L»ù","º¦¶^(+/-)","º¦¶^»ù®t","³Ì«á´¦¥Ü¶R»ù","³Ì«á´¦¥Ü¶R¶q","³Ì«á´¦¥Ü½æ»ù","³Ì«á´¦¥Ü½æ¶q","¥»¯q¤ñ"
     memset(&stockData, 0x0, sizeof(stockData));
 
-    DEBUG_OUTPUT("Target string: %ls \n", bufWC);
+    DEBUG_OUTPUT("Target string: >>>%ls ", bufWC);
 
     do
     {
@@ -105,26 +105,25 @@ struct __STOCK__ * data_pasrer(wchar_t *bufWC)
                 {
 
                     searchPairDoubleQuotea();
-                    //    int id;                         // "è­‰åˆ¸ä»£è™Ÿ"
+                    //    int id;                         // "ÃÒ¨é¥N¸¹"
                     stockData.id = wcstold();
-                    wcstoul (const wchar_t *__restrict __nptr,â†µ
-                            474 Â»...Â»...Â»...Â»...  wchar_t **__restrict __endptr, int __base)
-                    //    wchar_t name[STOCK_NAME_LEN];   // "è­‰åˆ¸åç¨±"
-                    //    unsigned int stock;             // "æˆäº¤è‚¡æ•¸"
-                    //    unsigned int trade;             // "æˆäº¤ç­†æ•¸"
-                    //    unsigned int vol;               // "æˆäº¤é‡‘é¡"
+                    wcstoul ( __nptr,  __endptr, __base)
+                    //    wchar_t name[STOCK_NAME_LEN];   // "ÃÒ¨é¦WºÙ"
+                    //    unsigned int stock;             // "¦¨¥æªÑ¼Æ"
+                    //    unsigned int trade;             // "¦¨¥æµ§¼Æ"
+                    //    unsigned int vol;               // "¦¨¥æª÷ÃB"
                     //                    wcstol
-                    //    float open;            // "é–‹ç›¤åƒ¹"
-                    //    float high;            // "æœ€é«˜åƒ¹"
-                    //    float low;            // "æœ€ä½Žåƒ¹"
-                    //    float close;            // "æ”¶ç›¤åƒ¹"
-                    //    unsigned char sign;             // "æ¼²è·Œ(+/-)"
-                    //    float diff;            // "æ¼²è·Œåƒ¹å·®"
-                    //    float buy;             // "æœ€å¾Œæ­ç¤ºè²·åƒ¹"
-                    //    float buy_vol;         // "æœ€å¾Œæ­ç¤ºè²·é‡"
-                    //    float sell;            // "æœ€å¾Œæ­ç¤ºè³£åƒ¹"
-                    //    float sell_vol;        // "æœ€å¾Œæ­ç¤ºè³£é‡"
-                    //    float epr;             // "æœ¬ç›Šæ¯”"â†µ
+                    //    float open;            // "¶}½L»ù"
+                    //    float high;            // "³Ì°ª»ù"
+                    //    float low;            // "³Ì§C»ù"
+                    //    float close;            // "¦¬½L»ù"
+                    //    unsigned char sign;             // "º¦¶^(+/-)"
+                    //    float diff;            // "º¦¶^»ù®t"
+                    //    float buy;             // "³Ì«á´¦¥Ü¶R»ù"
+                    //    float buy_vol;         // "³Ì«á´¦¥Ü¶R¶q"
+                    //    float sell;            // "³Ì«á´¦¥Ü½æ»ù"
+                    //    float sell_vol;        // "³Ì«á´¦¥Ü½æ¶q"
+                    //    float epr;             // "¥»¯q¤ñ"
                     itemCount++;
                     */
 
@@ -343,11 +342,11 @@ int csvhandler(char *csvFile)
                     }
                     break;
                 }
-                case L'æŸ¥':
+                case L'¬d':
                 {
-                    // æŸ¥ç„¡è³‡æ–™ => not a trading day.
+                    // ¬dµL¸ê®Æ => not a trading day.
                     c = fgetwc(pf);
-                    if( L'ç„¡' == c )
+                    if( L'µL' == c )
                     {
                         DEBUG_OUTPUT("%s not a trading day\n", csvFile);
                         fclose(pf);
@@ -356,10 +355,10 @@ int csvhandler(char *csvFile)
                     break;
                 }
 #if 0 // parser example
-                case L'å¤§':
+                case L'¤j':
                 {
                     DEBUG_OUTPUT("get Keyword\n");
-                    //å¤§ç›¤çµ±è¨ˆè³‡è¨Š => a trading day
+                    //¤j½L²Î­p¸ê°T => a trading day
                     memset(bufWC, 0x0, sizeof(bufWC));
                     bufWC[0] = c ;
                     for(i = 1 ; i< 6; i++)
@@ -375,7 +374,7 @@ int csvhandler(char *csvFile)
                     }
 
                     DEBUG_OUTPUT("get string %ls\n", bufWC);
-                    if( 0 ==  wcscmp(L"å¤§ç›¤çµ±è¨ˆè³‡è¨Š", bufWC))
+                    if( 0 ==  wcscmp(L"¤j½L²Î­p¸ê°T", bufWC))
                     {
                         DEBUG_OUTPUT(">>>> %s is a trading day\n", csvFile);
                         fclose(pf);
@@ -386,32 +385,32 @@ int csvhandler(char *csvFile)
                     break;
                 }
 #endif
-#if 1 // æ‰¾å°‹ETF, ç”±'='é–‹å§‹çš„å­—ä¸²
+#if 1 // §ä´METF, ¥Ñ'='¶}©lªº¦r¦ê
                 case '=':
                 {
                     DEBUG_OUTPUT("get ETF, try to get whole stock line by line\n");
-                    //å¤§ç›¤çµ±è¨ˆè³‡è¨Š => a trading day
+                    //¤j½L²Î­p¸ê°T => a trading day
                     memset(bufWC, 0x0, sizeof(bufWC));
 
                     // It should be the first ETF 
                     // parse all stocks to last one
                     while(fgetws(bufWC, sizeof(bufWC), pf) != NULL)
                     {
-                        // if "èªªæ˜Žï¼š" appears, it means no more data, so stop read file.
-                        if(!wcsncmp(L"èªªæ˜Žï¼š", bufWC, wcslen(L"èªªæ˜Žï¼š")))
+                        // if "»¡©ú¡G" appears, it means no more data, so stop read file.
+                        if(!wcsncmp(L"\"»¡©ú¡G\"", bufWC, (int)wcslen(L"\"»¡©ú¡G\"")))
                         {
                             DEBUG_OUTPUT("No more data, stop read file\n");
                             fclose(pf);
                             return 0;
                         }
                         // pass to ETF_wcs_handler and return a struct store specified ETF's data.
-                        pstockData = data_pasrer(bufWC);
-
-                        // pass to function to store in DB.
-                        ret = store_stock_to_db(pstockData);
-
+                        if((pstockData = data_pasrer(bufWC) )== NULL)
+                            continue;
+                        else // pass to function to store in DB.
+                        {
+                            ret = store_stock_to_db(pstockData);
+                        }
                     }
-
                     break;
                 }
 #endif
