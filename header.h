@@ -4,6 +4,7 @@
 #define FILE_HOLIDAY        "Holiday"
 #define TSE_DATE_CLASSIFIC  "TSE.db3"
 #define DEBUG_OUTPUT( formats, args...) do{ \
+                fprintf(stderr, "%s:%d > ", __FUNCTION__, __LINE__); \
                 fprintf(stderr, formats, ##args); \
             }while(0);
 
@@ -22,6 +23,7 @@ typedef enum{
     DB_QUERY_FAIL,
     LC_SET_FAIL,
     DATA_FORMAT_ERROR,
+    STRING_NULL,
 }errList;
 
 void output_err(unsigned int err)
@@ -71,6 +73,9 @@ void output_err(unsigned int err)
 
         case DATA_FORMAT_ERROR:
             DEBUG_OUTPUT("Parse error : Error data format \n");
+            break;
+        case STRING_NULL:
+            DEBUG_OUTPUT("Parse error : \n");
             break;
         default:
             DEBUG_OUTPUT("General error : %d\n", err);
