@@ -6,6 +6,7 @@
 #include <iconv.h>
 #include <locale.h>
 #include <wchar.h>
+#include <math.h>
 #include "header.h"
 
 
@@ -15,49 +16,146 @@
 #define PATH_LEN 1024 
 #define FILENAME_LEN 256
 #define BUFF_LEN 4096
+#define STOCK_NAME_LEN 32 
 
 #define ARGU_INPUT_PATH 1
 #define ARGU_OUTPUT_PATH 2
 
 #define CMD_QUERY_TABLE     "SELECT * FROM TSETradeDay;"
 
+#define STOCK_ATTR_NUM      16
+
 // reference to database 
 sqlite3 *db = NULL;
 // reference to table 
 char **table = NULL;
 
-int CSVHandler(char *csvFile);
+struct __STOCK__{
+    unsigned long int id;                         // "證券代號"
+    wchar_t name[STOCK_NAME_LEN];   // "證券名稱"
+    unsigned long int stock;             // "成交股數"
+    unsigned long int trade;             // "成交筆數"
+    unsigned long int vol;               // "成交金額"
+    float open;            // "開盤價"
+    float high;            // "最高價"
+    float low;            // "最低價"
+    float close;            // "收盤價"
+    unsigned char sign;             // "漲跌(+/-)"
+    float diff;            // "漲跌價差"
+    float buy;             // "最後揭示買價"
+    float buy_vol;         // "最後揭示買量"
+    float sell;            // "最後揭示賣價"
+    float sell_vol;        // "最後揭示賣量"
+    float epr;             // "本益比"↵
+}stockData, *pstockData;
+
+int csvhandler(char *csvFile);
 void usage(char *app_name)
 {
     DEBUG_OUTPUT( "%s <Folder contains csv fllies download from TSE> <ouptut foloder>\n" , app_name)
 }
 
-void csv_date_check(f, date_str)
+struct __STOCK__ * data_pasrer(wchar_t *bufWC)
 {
-    /*
-    try:
-        os.stat(f)
-    except:     
-        print (sys.argv[0] + "[Error] file is not exist : " + f + ", script will insert data directly.")
-        return 0
+    int itemCount = 0, i = 0;
+    unsigned char encounterFirstItem = 0;
+    unsigned char encounterETFPrefix = 0;
 
-    if 0 == len(date_str) :
-        print (sys.argv[0] + "[Warning] argument date is NULL")
-        return -1
 
-    f=open(f, 'r', encoding='utf-8')
-    with f: 
-        for his_data in csv.reader(f, delimiter=';' ):
-            print (sys.argv[0] + "[info] " + str(his_data))
-            if his_data[0] == str(date_str):
-                print (sys.argv[0]+"[Info] date " + str(date_str) + "has in record")
-                return -1
-    f.close()
-    return 0 
-    */
+    // "證券代號","證券名稱","成交股數","成交筆數","成交金額","開盤價","最高價","最低價","收盤價","漲跌(+/-)","漲跌價差","最後揭示買價","最後揭示買量","最後揭示賣價","最後揭示賣量","本益比"↵
+    memset(&stockData, 0x0, sizeof(stockData));
+
+    DEBUG_OUTPUT("Target string: %ls \n", bufWC);
+
+    do
+    {
+#if DEBUG
+        // DEBUG_OUTPUT("get %lc\n", c);
+#endif
+        switch(bufWC[i])
+        {
+            case L'=': // ETF prefix, dont care
+            {
+                if( 0 == encounterETFPrefix )
+                {
+                    DEBUG_OUTPUT("Another ETF found\n");
+                    encounterETFPrefix = 1;
+                }
+                else 
+                {
+                    output_err(DATA_FORMAT_ERROR);
+                    DEBUG_OUTPUT("Last charater : %lc \n", bufWC[i]);
+                    return NULL;
+                }
+                break;
+            }
+            case L'\n':
+            {
+                DEBUG_OUTPUT("Read the end of line : Last charater : %lc \n", bufWC[i]);
+                return NULL;
+                break;
+            }
+            case '\"':
+            {
+                if( 0 == encounterFirstItem )
+                    encounterFirstItem = 1;
+
+                /*
+                while ((L'\"' != bufWC[i++]) && (STOCK_ATTR_NUM > itemCount))
+                {
+
+                    searchPairDoubleQuotea();
+                    //    int id;                         // "證券代號"
+                    stockData.id = wcstold();
+                    wcstoul (const wchar_t *__restrict __nptr,↵
+                            474 »...»...»...»...  wchar_t **__restrict __endptr, int __base)
+                    //    wchar_t name[STOCK_NAME_LEN];   // "證券名稱"
+                    //    unsigned int stock;             // "成交股數"
+                    //    unsigned int trade;             // "成交筆數"
+                    //    unsigned int vol;               // "成交金額"
+                    //                    wcstol
+                    //    float open;            // "開盤價"
+                    //    float high;            // "最高價"
+                    //    float low;            // "最低價"
+                    //    float close;            // "收盤價"
+                    //    unsigned char sign;             // "漲跌(+/-)"
+                    //    float diff;            // "漲跌價差"
+                    //    float buy;             // "最後揭示買價"
+                    //    float buy_vol;         // "最後揭示買量"
+                    //    float sell;            // "最後揭示賣價"
+                    //    float sell_vol;        // "最後揭示賣量"
+                    //    float epr;             // "本益比"↵
+                    itemCount++;
+                    */
+
+
+                break;
+            }
+            case L',': 
+            default:
+            {
+                if( 0 == encounterFirstItem) // If first item still not found, give up to search..
+                {
+                    output_err(DATA_FORMAT_ERROR);
+                    DEBUG_OUTPUT("Last charater : %lc \n", bufWC[i]);
+                    return NULL;
+                }
+                break;
+            }
+        }
+    } while ( (L'\0' != bufWC[i++]) && (STOCK_ATTR_NUM > itemCount)) ; // 
+
+    return &stockData;
 }
 
-void closeDB()
+
+int store_stock_to_db(struct __STOCK__ * pData)
+{
+
+    return 0;
+}
+
+void close_db()
 {
     /* free */
     if(NULL != table)
@@ -125,7 +223,7 @@ int main(int argc, char *argv[])
     {
         // db doesn't exist
         output_err(DB_NOT_FOUND);
-        closeDB();
+        close_db();
         exit(0);
     }
 
@@ -139,7 +237,7 @@ int main(int argc, char *argv[])
     {
         output_err(DB_QUERY_FAIL);
         DEBUG_OUTPUT("Cause: \t[%s]\n", errMsg);
-        closeDB();
+        close_db();
         exit(0);
     }
 
@@ -166,17 +264,17 @@ int main(int argc, char *argv[])
             memset(buf, 0x0, sizeof(buf));
             sprintf(buf, "%s/%s.csv", inputPath, table[i*cols]);
 
-            ret = CSVHandler(buf);
+            ret = csvhandler(buf);
         }
     }
 
 
 
-    closeDB();
+    close_db();
     exit(0);
 }
 
-int CSVHandler(char *csvFile)
+int csvhandler(char *csvFile)
 {
     //argv[1] path to csv file
     //argv[2] number of lines to skip
@@ -190,6 +288,7 @@ int CSVHandler(char *csvFile)
     unsigned int vcpm; //value character marker
     int QuotationOnOff; //0 - off, 1 - on
     int i = 0 ;
+    int ret = 0 ;
 
     if(0 != stat(csvFile, &st))
     {
@@ -208,7 +307,9 @@ int CSVHandler(char *csvFile)
 
         while( (c = fgetwc(pf)) != WEOF)
         {
-            DEBUG_OUTPUT("get %lc\n", c);
+#if DEBUG
+            // DEBUG_OUTPUT("get %lc\n", c);
+#endif
             switch(c)
             {
                 case ',':
@@ -254,6 +355,7 @@ int CSVHandler(char *csvFile)
                     }
                     break;
                 }
+#if 0 // parser example
                 case L'大':
                 {
                     DEBUG_OUTPUT("get Keyword\n");
@@ -283,6 +385,37 @@ int CSVHandler(char *csvFile)
                         DEBUG_OUTPUT("... not keystring\n");
                     break;
                 }
+#endif
+#if 1 // 找尋ETF, 由'='開始的字串
+                case '=':
+                {
+                    DEBUG_OUTPUT("get ETF, try to get whole stock line by line\n");
+                    //大盤統計資訊 => a trading day
+                    memset(bufWC, 0x0, sizeof(bufWC));
+
+                    // It should be the first ETF 
+                    // parse all stocks to last one
+                    while(fgetws(bufWC, sizeof(bufWC), pf) != NULL)
+                    {
+                        // if "說明：" appears, it means no more data, so stop read file.
+                        if(!wcsncmp(L"說明：", bufWC, wcslen(L"說明：")))
+                        {
+                            DEBUG_OUTPUT("No more data, stop read file\n");
+                            fclose(pf);
+                            return 0;
+                        }
+                        // pass to ETF_wcs_handler and return a struct store specified ETF's data.
+                        pstockData = data_pasrer(bufWC);
+
+                        // pass to function to store in DB.
+                        ret = store_stock_to_db(pstockData);
+
+                    }
+
+                    break;
+                }
+#endif
+
                 default:
                 {
                     pTempValHolder[vcpm] = c;
@@ -302,3 +435,5 @@ int CSVHandler(char *csvFile)
 
     return 0;
 }
+
+

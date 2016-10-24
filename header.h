@@ -21,6 +21,7 @@ typedef enum{
     DB_INSERT_FAIL,
     DB_QUERY_FAIL,
     LC_SET_FAIL,
+    DATA_FORMAT_ERROR,
 }errList;
 
 void output_err(unsigned int err)
@@ -66,6 +67,10 @@ void output_err(unsigned int err)
 
         case LC_SET_FAIL:
             DEBUG_OUTPUT("Locale error : Set locale failed \n");
+            break;
+
+        case DATA_FORMAT_ERROR:
+            DEBUG_OUTPUT("Parse error : Error data format \n");
             break;
         default:
             DEBUG_OUTPUT("General error : %d\n", err);
