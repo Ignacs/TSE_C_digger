@@ -15,12 +15,18 @@
 
 #define PATH_LEN 1024 
 #define FILENAME_LEN 256
-#define BUFF_LEN 4096
+#define CMD_LEN 1024 
 
 #define ARGU_INPUT_PATH 1
 #define ARGU_OUTPUT_PATH 2
 
-#define CMD_QUERY_TABLE     "SELECT * FROM TSETradeDay;"
+// database command
+#define CMD_QUERY_TRADEDAY          "SELECT * FROM TSETradeDay;"
+#define CMD_CREATE_TABLE_DAILY      "CREATE TABLE IF NOT EXISTS DailyData( date INT PRIMARY KEY NOT NULL UNIQUE, NAME TEXT, stockNum int, tradeNum int, volume int, open float, high float, low float, close float, sign char, diff float, buy float, buyVol float, sell float, sellVol float, epr float);"
+
+
+#define CMD_INSERT_TABLE_DAILY      "INSERT INTO DailyData VALUES"
+#define CMD_QUERY_STOCK             "SELECT * FROM DailyData;"
 
 #define STOCK_ID_LEN        64 
 #define STOCK_VALUE_LEN     64 
@@ -32,6 +38,7 @@
 sqlite3 *db = NULL;
 // reference to table 
 char **table = NULL;
+char *errMsg = NULL;
 
 struct __STOCK__{
     wchar_t id[STOCK_ID_LEN];           // 靡ㄩ腹
@@ -52,7 +59,10 @@ struct __STOCK__{
     wchar_t epr[STOCK_PRICE_LEN];       // "セ痲ゑ"
 }stockData, *pstockData;
 
-int csvhandler(char *csvFile);
+static char outputPath[PATH_LEN];
+
+int csvhandler(char *csvFile, char *data);
+
 void usage(char *app_name)
 {
     DEBUG_OUTPUT( "%s <Folder contains csv fllies download from TSE> <ouptut foloder>\n" , app_name)
@@ -79,141 +89,21 @@ int searchInDoubleQuotea(wchar_t *bufWC, wchar_t *buf, unsigned int buf_len)
     i = 0;
     while(L'"' != *(pCurr+i)) 
     {
-        *(buf+i) = *(pCurr+i);
+
+        if(L' ' == *(pCurr+i)) // remove space
+            *(buf+i) = L'\0';
+        else 
+            *(buf+i) = *(pCurr+i);
         i++;
     }
 
     return i;
 }
 
-unsigned int wcsConvToU_10b(wchar_t *wcs)
-{
-    wchar_t *ptr = NULL ;
-    int i = 0;
-    char buf[BUFF_LEN];
-
-    if( NULL == wcs)
-        return 0;
-    ptr = wcs;
-    
-    memset(buf, 0x0, sizeof(buf));
-DEBUG_OUTPUT(">>> string [%ls] \n", wcs);
-    for(i = 0; 1; i++)
-    {
-DEBUG_OUTPUT(">>> %lc \n",  *(ptr+i));
-        switch(*(ptr+i))
-        {
-            case L'0':
-                buf[i] = '0';
-                break;
-            case L'1':
-                buf[i] = '1';
-                break;
-            case L'2':
-                buf[i] = '2';
-                break;
-            case L'3':
-                buf[i] = '3';
-                break;
-            case L'4':
-                buf[i] = '4';
-                break;
-            case L'5':
-                buf[i] = '5';
-                break;
-            case L'6':
-                buf[i] = '6';
-                break;
-            case L'7':
-                buf[i] = '7';
-                break;
-            case L'8':
-                buf[i] = '8';
-                break;
-            case L'9':
-                buf[i] = '9';
-                break;
-            default : 
-DEBUG_OUTPUT(">>> %ld \n",  strtol( buf, NULL, 10));
-                return strtol( buf, NULL, 10);
-                break;
-        }
-    }
-
-DEBUG_OUTPUT(">>> %ld \n",  strtol( buf, NULL, 10));
-    return 0;
-}
-
-/*
-float wcsConvToF_10b(wchar_t *wcs)
-{
-    wchar_t *ptr = NULL ;
-    int i = 0;
-    char buf[BUFF_LEN];
-
-    if( NULL == wcs)
-        return 0;
-    ptr = wcs;
-    
-    memset(buf, 0x0, sizeof(buf));
-DEBUG_OUTPUT(">>> string [%ls] \n", wcs);
-    for(i = 0; 1; i++)
-    {
-DEBUG_OUTPUT(">>> %lc \n",  *(ptr+i));
-        switch(*(ptr+i))
-        {
-            case L'0':
-                buf[i] = '0';
-                break;
-            case L'1':
-                buf[i] = '1';
-                break;
-            case L'2':
-                buf[i] = '2';
-                break;
-            case L'3':
-                buf[i] = '3';
-                break;
-            case L'4':
-                buf[i] = '4';
-                break;
-            case L'5':
-                buf[i] = '5';
-                break;
-            case L'6':
-                buf[i] = '6';
-                break;
-            case L'7':
-                buf[i] = '7';
-                break;
-            case L'8':
-                buf[i] = '8';
-                break;
-            case L'9':
-                buf[i] = '9';
-                break;
-            case L'.':
-                buf[i] = '.';
-                break;
-            default : 
-DEBUG_OUTPUT(">>> %f \n",  (int)(strtof( buf, L'\0')*100)/100.0);
-                return (int)(strtof( buf, L'\0')*100)/100.0;
-                break;
-        }
-    }
-
-DEBUG_OUTPUT(">>> %f \n",  (int)(strtof( buf, L'\0')*100)/100.0);
-    return (int)(strtof( buf, L'\0')*100)/100.0;
-;
-}
-*/
 
 unsigned int jump_to_next_item(wchar_t *ptr)
 {
     // ignore ','
-DEBUG_OUTPUT(">>> %lc \n",  *(ptr));
-DEBUG_OUTPUT(">>> %lc \n",  *(ptr+1));
-DEBUG_OUTPUT(">>> %lc \n",  *(ptr+2));
     if( L',' == *(ptr))
         if( L'\"' == *(ptr+1 ))
             return 2;
@@ -411,7 +301,7 @@ DEBUG_OUTPUT(">>> get string [%d](%ls), i = %d, itemCount =%d\n",  len, pVal, i,
 DEBUG_OUTPUT(">>> jump to next char [%d]\n",  i);
 
                     //    wchar_t buy[STOCK_PRICE_LEN];       // "程处ボ禦基"
-                    pVal = stockData.diff;
+                    pVal = stockData.buy;
                     len = searchInDoubleQuotea(&bufWC[i], pVal, STOCK_VALUE_LEN);
                     i = i + len + 1;
                     itemCount++;
@@ -487,13 +377,6 @@ DEBUG_OUTPUT(">>> get string [%d](%ls), i = %d, itemCount =%d\n",  len, pVal, i,
     return NULL;
 }
 
-
-int store_stock_to_db(struct __STOCK__ * pData)
-{
-
-    return 0;
-}
-
 void close_db()
 {
     /* free */
@@ -504,6 +387,170 @@ void close_db()
     sqlite3_close(db);
 }
 
+// insert specified stock into its database
+int insert_stock_to_db(struct __STOCK__ * pData, char *date)
+{
+    sqlite3 *pdb = NULL;
+    char stockDBNamePath[FILENAME_LEN];
+    char cmd[CMD_LEN];
+    int i = 0;
+    int ret = 0;
+
+    memset(stockDBNamePath, 0x0, FILENAME_LEN);
+
+    sprintf(stockDBNamePath, "%s/%ls.sl3" , outputPath, pData->id );
+
+    /*
+    for( i= 0 ;i<FILENAME_LEN; i++ )
+    {
+DEBUG_OUTPUT("%c -", stockDBNamePath[i]);
+    }
+    */
+
+    if (sqlite3_open_v2(stockDBNamePath, &pdb, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL))
+    {
+        // db doesn't exist
+        output_err(DB_NOT_FOUND);
+        DEBUG_OUTPUT("DB : %s\n", stockDBNamePath);
+
+        /* close database */
+        sqlite3_close(pdb);
+
+        return -1;
+    }
+
+    /* create table if not exist */
+    ret = sqlite3_exec(pdb, CMD_CREATE_TABLE_DAILY, 0, 0, &errMsg);
+    if( SQLITE_OK != ret && SQLITE_ROW != ret && SQLITE_DONE != ret )
+    {
+        output_err(DB_CREATE_FAIL);
+        DEBUG_OUTPUT("Cause: \t[%s]\n", errMsg);
+
+        /* close database */
+        sqlite3_close(pdb);
+        return -1;
+    }
+
+    memset(cmd, 0x0, sizeof(cmd));
+    sprintf(cmd, "%s( %d, '%ls', %d, %d, %d, %ls, %ls, %ls, %ls, '%lc', %ls, %ls, %d, %ls, %d, %ls)", CMD_INSERT_TABLE_DAILY,  
+                atoi(date),          
+                pData->name,       
+                pData->stock,             
+                pData->trade,              
+                pData->vol,                 
+                pData->open,
+                pData->high, 
+                pData->low,   
+                pData->close,  
+                pData->sign,
+                pData->diff,     
+                pData->buy,       
+                pData->buyVol,   
+                pData->sell,    
+                pData->sellVol,              
+                pData->epr
+            );
+
+    // DEBUG_OUTPUT(" %ls", pData->id);
+    // DEBUG_OUTPUT(" %ls", pData->name);
+    // DEBUG_OUTPUT(" %d", pData->stock);
+    // DEBUG_OUTPUT(" %d", pData->trade);
+    // DEBUG_OUTPUT(" %d", pData->vol);
+    // DEBUG_OUTPUT(" %ls", pData->open);    
+    // DEBUG_OUTPUT(" %ls", pData->high);
+    // DEBUG_OUTPUT(" %ls", pData->low);
+    // DEBUG_OUTPUT(" %ls", pData->close);
+    // DEBUG_OUTPUT(" %lc", pData->sign);
+    // DEBUG_OUTPUT(" diff > > %ls\n", pData->diff);
+    // DEBUG_OUTPUT(" %ls", pData->buy);
+    // DEBUG_OUTPUT(" %d", pData->buyVol);
+    // DEBUG_OUTPUT(" %ls", pData->sell);
+    // DEBUG_OUTPUT(" %d", pData->sellVol);
+    // DEBUG_OUTPUT(" %ls", pData->epr);
+    DEBUG_OUTPUT("Execute cmd : [%s]\n", cmd);
+
+    // change locale to Big5
+    if (!setlocale(LC_CTYPE, "zh_TW.Big5")) 
+    {
+        output_err(LC_SET_FAIL);
+        return -2;
+    }
+
+    ret = sqlite3_exec(pdb, cmd, NULL, NULL, &errMsg);
+    if( SQLITE_OK != ret && SQLITE_ROW != ret && SQLITE_DONE != ret )
+    {
+        output_err(DB_INSERT_FAIL);
+        DEBUG_OUTPUT("Cause: \t[%s]\n", errMsg);
+
+        /* close database */
+        sqlite3_close(pdb);
+        return -1;
+    }
+
+    /* close database */
+    sqlite3_close(pdb);
+    return 0;
+}
+
+int get_table_from_db( char *id )
+{
+    sqlite3 *pdb = NULL;
+    int rows=0, cols=0;
+    char stockDBNamePath[FILENAME_LEN];
+    char cmd[CMD_LEN];
+    int i = 0, j = 0;
+    int ret = 0;
+
+    memset(stockDBNamePath, 0x0, FILENAME_LEN);
+    sprintf(stockDBNamePath, "%s/%s.sl3" , outputPath, id );
+
+    if (sqlite3_open_v2(stockDBNamePath, &pdb, SQLITE_OPEN_READONLY, NULL))
+    {
+        // db doesn't exist
+        output_err(DB_NOT_FOUND);
+        DEBUG_OUTPUT("DB : %s\n", stockDBNamePath);
+
+        /* close database */
+        close_db(pdb);
+        return -1;
+    }
+
+    /* create table if not exist */
+    ret = sqlite3_get_table(pdb, CMD_QUERY_STOCK, &table, &rows, &cols, &errMsg);
+    if( SQLITE_OK != ret && SQLITE_ROW != ret && SQLITE_DONE != ret )
+    {
+        output_err(DB_CREATE_FAIL);
+        DEBUG_OUTPUT("Cause: \t[%s]\n", errMsg);
+
+        /* close database */
+        close_db(pdb);
+        return -1;
+    }
+    DEBUG_OUTPUT("total %d rows, %d cols\n", rows, cols);
+
+    DEBUG_OUTPUT("靡ㄩ腹\t靡ㄩ嘿\tΘユ计\tΘユ掸计\tΘユ肂\t秨絃基\t程蔼基\t程基\tΜ絃基\t害禴(+/-)\t害禴基畉\t程处ボ禦基\t程处ボ禦秖\t程处ボ芥基\t程处ボ芥秖\tセ痲ゑ\n");
+    // get specified stock data 
+    for(i = 0 ; i<= rows; i++)
+    {
+        // in -dimension string structure 
+        // EX:
+        //  date1 1
+        //  date2 0
+        //  date3 1...
+        //  => [data1][1][date2][0][date3][1]...
+        for(j = 0; j < cols; j++)
+        {
+            fprintf(stderr, "[%s]\t", table[i*cols+j]);
+        }
+        fprintf(stderr,"\n");
+    }
+
+    /* close database */
+    close_db(pdb);
+    return 0;
+}
+
+
 int main(int argc, char *argv[])
 {
     // output compiled date and time 
@@ -511,7 +558,6 @@ int main(int argc, char *argv[])
 
     int rows=0, cols =0;
     int i = 0, j = 0 ;
-    char outputPath[PATH_LEN];
     char inputPath[PATH_LEN];
     struct stat st;
     FILE *traDayFp = NULL;
@@ -519,7 +565,6 @@ int main(int argc, char *argv[])
     char *endptr =NULL;
     long int val = 0;
     int ret =0;
-    char *errMsg = NULL;
 
     if ( 3 > argc) 
     {
@@ -528,12 +573,6 @@ int main(int argc, char *argv[])
         exit(0);
     }
 
-    // change locale to Big5
-    if (!setlocale(LC_CTYPE, "zh_TW.Big5")) 
-    {
-        output_err(LC_SET_FAIL);
-        return 1;
-    }
 
     // check in and out path
     memset(inputPath, 0x0, sizeof(inputPath));
@@ -571,7 +610,7 @@ int main(int argc, char *argv[])
 #endif //SQL_DBG
 
     // query all trading days.
-    ret = sqlite3_get_table(db , CMD_QUERY_TABLE, &table, &rows, &cols, &errMsg);
+    ret = sqlite3_get_table(db , CMD_QUERY_TRADEDAY, &table, &rows, &cols, &errMsg);
     if( SQLITE_OK != ret && SQLITE_ROW != ret && SQLITE_DONE != ret )
     {
         output_err(DB_QUERY_FAIL);
@@ -603,17 +642,15 @@ int main(int argc, char *argv[])
             memset(buf, 0x0, sizeof(buf));
             sprintf(buf, "%s/%s.csv", inputPath, table[i*cols]);
 
-            ret = csvhandler(buf);
+            ret = csvhandler(buf, table[i*cols]);
         }
     }
-
-
 
     close_db();
     exit(0);
 }
 
-int csvhandler(char *csvFile)
+int csvhandler(char *csvFile, char *date)
 {
     //argv[1] path to csv file
     //argv[2] number of lines to skip
@@ -625,12 +662,20 @@ int csvhandler(char *csvFile)
     wchar_t bufWC[BUFF_LEN];
     int i = 0 ;
     int ret = 0 ;
+    char buf[BUFF_LEN];
 
     if(0 != stat(csvFile, &st))
     {
         output_err(FILE_NOT_FOUND);
         DEBUG_OUTPUT("%s doesn't exist\n", csvFile);
         return -1;
+    }
+
+    // change locale to Big5
+    if (!setlocale(LC_CTYPE, "zh_TW.Big5")) 
+    {
+        output_err(LC_SET_FAIL);
+        return 1;
     }
 
     if( pf = fopen(csvFile,"r") )
@@ -723,7 +768,11 @@ int csvhandler(char *csvFile)
                             continue;
                         else // pass to function to store in DB.
                         {
-                            ret = store_stock_to_db(pstockData);
+                            ret = insert_stock_to_db(pstockData, date);
+
+sprintf(buf, "%ls", pstockData->id);
+get_table_from_db(buf);
+
                         }
                     }
                     break;
