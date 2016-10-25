@@ -9,6 +9,9 @@
 
 #define EXECNAME
 
+// debug flag
+#define SQL_DBG 0
+
 #define PATH_LEN 512
 #define URL_LEN 4096
 #define FILENAME_LEN 256
@@ -102,6 +105,7 @@ int main(int argc, char **argv)
         {
             break;
         }
+#if 0 // not supported 
         case  4:
         {
             numStock = atoi(argv[3]);
@@ -110,6 +114,7 @@ int main(int argc, char **argv)
             exit(0);
             break;
         }
+#endif 
         default:
         {
             output_err(ARG_NOT_ENOUGH);
@@ -277,19 +282,20 @@ int main(int argc, char **argv)
                 // output to sqlite db
                 memset(cmd, 0x0, sizeof(cmd));
                 sprintf(cmd, "%s( %03d%02d%02d , 1 )", CMD_INSERT_TABLE, time_ROC.tm_year, time_ROC.tm_mon, time_ROC.tm_mday );
-                
             }
+
+#if SQL_DBG
+            DEBUG_OUTPUT("Execute cmd [%s]\n", cmd);
+#endif //SQL_DBG
 
             // system(cmd);
             // insert to Database
-            /*
-             * ret = sqlite3_exec(db, cmd, NULL, NULL, &errMsg);
+            ret = sqlite3_exec(db, cmd, NULL, NULL, &errMsg);
             if( SQLITE_OK != ret && SQLITE_ROW != ret && SQLITE_DONE != ret )
             {
                 output_err(DB_INSERT_FAIL);
                 DEBUG_OUTPUT("Cause: \t[%s]\n", errMsg);
             }
-            */
         }
         else 
         {
@@ -322,7 +328,8 @@ int main(int argc, char **argv)
     //每日收盤行情
     //string('證券代號,證券名稱,成交股數,成交筆數,成交金額,開盤價,最高價,最低價,收盤價,漲跌(+/-),漲跌價差,最後揭示買價,最後揭示買量,最後揭示賣價,最後揭示賣量,本益比'+'\n')
     //
-    // query Database
+
+#if SQL_DBG // query Database
     ret = sqlite3_get_table(db , CMD_QUERY_TABLE, &table, &rows, &cols, &errMsg);
     if( SQLITE_OK != ret && SQLITE_ROW != ret && SQLITE_DONE != ret )
     {
@@ -338,13 +345,14 @@ int main(int argc, char **argv)
             DEBUG_OUTPUT("\n");
         }
     }
+#endif
 
     closeDB();
 }
 
 void usage()
 {
-    printf("%s <amount of day to download> <output folder> <specified stock number> \n", __FILE__);
+    printf("%s <amount of day to download> <output folder>  \n", __FILE__);
 }
 
 
