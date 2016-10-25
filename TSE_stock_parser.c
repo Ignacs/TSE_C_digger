@@ -22,7 +22,7 @@
 
 // database command
 #define CMD_QUERY_TRADEDAY          "SELECT * FROM TSETradeDay;"
-#define CMD_CREATE_TABLE_DAILY      "CREATE TABLE IF NOT EXISTS DailyData( date INT PRIMARY KEY NOT NULL UNIQUE, NAME TEXT, stockNum int, tradeNum int, volume int, open float, high float, low float, close float, sign char, diff float, buy float, buyVol float, sell float, sellVol float, epr float);"
+#define CMD_CREATE_TABLE_DAILY      "CREATE TABLE IF NOT EXISTS DailyData( date INT PRIMARY KEY NOT NULL UNIQUE, stockNum int, tradeNum int, volume int, open float, high float, low float, close float, sign char, diff float, buy float, buyVol float, sell float, sellVol float, epr float);"
 
 
 #define CMD_INSERT_TABLE_DAILY      "INSERT INTO DailyData VALUES"
@@ -82,14 +82,23 @@ int searchInDoubleQuotea(wchar_t *bufWC, wchar_t *buf, unsigned int buf_len)
     pCurr = bufWC;
 
     i = 0;
+
+
     while(L'"' != *(pCurr+i)) 
     {
-
         if(L' ' == *(pCurr+i)) // remove space
             *(buf+i) = L'\0';
         else 
             *(buf+i) = *(pCurr+i);
+
         i++;
+    }
+
+    // check '--'  , change to -1
+    if(!wcsncmp(pCurr, L"--", 2 )) 
+    {
+        DEBUG_OUTPUT( "encounter --, change to -1\n" )
+        *(buf+1) = L'1';
     }
 
     return i;
@@ -274,8 +283,11 @@ DEBUG_OUTPUT(">>> get string [%d](%ls), i = %d, itemCount =%d\n",  len, pVal, i,
 DEBUG_OUTPUT(">>> jump to next char [%d]\n",  i);
 
                     //    wchar_t sign;                       // "漲跌(+/-)"
+                    //    如果不漲不跌 改用'='
                     pVal = &stockData.sign;
                     len = searchInDoubleQuotea(&bufWC[i], pVal, sizeof(stockData.sign));
+                    if(L'\0' == *pVal)
+                        *pVal = L'=';
                     i = i + len + 1;
                     itemCount++;
 DEBUG_OUTPUT(">>> get string [%d](%ls), i = %d, itemCount =%d\n",  len, pVal, i, itemCount);
@@ -429,9 +441,8 @@ DEBUG_OUTPUT("%c -", stockDBNamePath[i]);
     }
 
     memset(cmd, 0x0, sizeof(cmd));
-    sprintf(cmd, "%s( %d, '%ls', %d, %d, %d, %ls, %ls, %ls, %ls, '%lc', %ls, %ls, %d, %ls, %d, %ls)", CMD_INSERT_TABLE_DAILY,  
+    sprintf(cmd, "%s( %d, %d, %d, %d, %ls, %ls, %ls, %ls, '%lc', %ls, %ls, %d, %ls, %d, %ls)", CMD_INSERT_TABLE_DAILY,  
                 atoi(date),          
-                pData->name,       
                 pData->stock,             
                 pData->trade,              
                 pData->vol,                 
@@ -774,8 +785,10 @@ int csvhandler(char *csvFile, char *date)
                         {
                             ret = insert_stock_to_db(pstockData, date);
 
-sprintf(buf, "%ls", pstockData->id);
-get_table_from_db(buf);
+#if SQL_DBG
+                            sprintf(buf, "%ls", pstockData->id);
+                            get_table_from_db(buf);
+#endif
 
                         }
                     }
