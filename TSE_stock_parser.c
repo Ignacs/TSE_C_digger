@@ -34,11 +34,6 @@
 #define STOCK_NAME_LEN      32 
 #define STOCK_PRICE_LEN      32 
 
-// reference to database 
-sqlite3 *db = NULL;
-// reference to table 
-char **table = NULL;
-char *errMsg = NULL;
 
 struct __STOCK__{
     wchar_t id[STOCK_ID_LEN];           // ÃÒ¨é¥N¸¹
@@ -377,7 +372,7 @@ DEBUG_OUTPUT(">>> get string [%d](%ls), i = %d, itemCount =%d\n",  len, pVal, i,
     return NULL;
 }
 
-void close_db()
+void close_db(sqlite3 *db, char **table)
 {
     /* free */
     if(NULL != table)
@@ -391,6 +386,8 @@ void close_db()
 int insert_stock_to_db(struct __STOCK__ * pData, char *date)
 {
     sqlite3 *pdb = NULL;
+    char *errMsg = NULL;
+    char **ptable = NULL ;
     char stockDBNamePath[FILENAME_LEN];
     char cmd[CMD_LEN];
     int i = 0;
@@ -414,7 +411,7 @@ DEBUG_OUTPUT("%c -", stockDBNamePath[i]);
         DEBUG_OUTPUT("DB : %s\n", stockDBNamePath);
 
         /* close database */
-        sqlite3_close(pdb);
+        close_db(pdb, ptable);
 
         return -1;
     }
@@ -427,7 +424,7 @@ DEBUG_OUTPUT("%c -", stockDBNamePath[i]);
         DEBUG_OUTPUT("Cause: \t[%s]\n", errMsg);
 
         /* close database */
-        sqlite3_close(pdb);
+        close_db(pdb, ptable);
         return -1;
     }
 
@@ -483,18 +480,20 @@ DEBUG_OUTPUT("%c -", stockDBNamePath[i]);
         DEBUG_OUTPUT("Cause: \t[%s]\n", errMsg);
 
         /* close database */
-        sqlite3_close(pdb);
+        close_db(pdb, ptable);
         return -1;
     }
 
     /* close database */
-    sqlite3_close(pdb);
+    close_db(pdb, ptable);
     return 0;
 }
 
 int get_table_from_db( char *id )
 {
     sqlite3 *pdb = NULL;
+    char *errMsg = NULL;
+    char **ptable = NULL;
     int rows=0, cols=0;
     char stockDBNamePath[FILENAME_LEN];
     char cmd[CMD_LEN];
@@ -511,19 +510,19 @@ int get_table_from_db( char *id )
         DEBUG_OUTPUT("DB : %s\n", stockDBNamePath);
 
         /* close database */
-        close_db(pdb);
+        close_db(pdb, ptable);
         return -1;
     }
 
     /* create table if not exist */
-    ret = sqlite3_get_table(pdb, CMD_QUERY_STOCK, &table, &rows, &cols, &errMsg);
+    ret = sqlite3_get_table(pdb, CMD_QUERY_STOCK, &ptable, &rows, &cols, &errMsg);
     if( SQLITE_OK != ret && SQLITE_ROW != ret && SQLITE_DONE != ret )
     {
         output_err(DB_CREATE_FAIL);
         DEBUG_OUTPUT("Cause: \t[%s]\n", errMsg);
 
         /* close database */
-        close_db(pdb);
+        close_db(pdb, ptable);
         return -1;
     }
     DEBUG_OUTPUT("total %d rows, %d cols\n", rows, cols);
@@ -540,13 +539,13 @@ int get_table_from_db( char *id )
         //  => [data1][1][date2][0][date3][1]...
         for(j = 0; j < cols; j++)
         {
-            fprintf(stderr, "[%s]\t", table[i*cols+j]);
+            fprintf(stderr, "[%s]\t", ptable[i*cols+j]);
         }
         fprintf(stderr,"\n");
     }
 
     /* close database */
-    close_db(pdb);
+
     return 0;
 }
 
@@ -565,6 +564,11 @@ int main(int argc, char *argv[])
     char *endptr =NULL;
     long int val = 0;
     int ret =0;
+    // reference to database 
+    sqlite3 *db = NULL;
+    // reference to table 
+    char **table = NULL;
+    char *errMsg = NULL;
 
     if ( 3 > argc) 
     {
@@ -601,7 +605,7 @@ int main(int argc, char *argv[])
     {
         // db doesn't exist
         output_err(DB_NOT_FOUND);
-        close_db();
+        close_db(db, table);
         exit(0);
     }
 
@@ -615,7 +619,7 @@ int main(int argc, char *argv[])
     {
         output_err(DB_QUERY_FAIL);
         DEBUG_OUTPUT("Cause: \t[%s]\n", errMsg);
-        close_db();
+        close_db(db, table);
         exit(0);
     }
 
@@ -646,7 +650,7 @@ int main(int argc, char *argv[])
         }
     }
 
-    close_db();
+    close_db(db, table);
     exit(0);
 }
 
