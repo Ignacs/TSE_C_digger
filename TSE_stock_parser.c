@@ -26,6 +26,7 @@
 #define STOCK_VALUE_LEN     64 
 #define STOCK_ATTR_NUM      16
 #define STOCK_NAME_LEN      32 
+#define STOCK_PRICE_LEN      32 
 
 // reference to database 
 sqlite3 *db = NULL;
@@ -33,22 +34,22 @@ sqlite3 *db = NULL;
 char **table = NULL;
 
 struct __STOCK__{
-    wchar_t id[STOCK_ID_LEN];                         // 靡ㄩ腹
-    wchar_t name[STOCK_NAME_LEN];   // "靡ㄩ嘿"
-    unsigned long int stock;             // "Θユ计"
-    unsigned long int trade;             // "Θユ掸计"
-    unsigned long int vol;               // "Θユ肂"
-    float open;            // "秨絃基"
-    float high;            // "程蔼基"
-    float low;            // "程基"
-    float close;            // "Μ絃基"
-    unsigned char sign;             // "害禴(+/-)"
-    float diff;            // "害禴基畉"
-    float buy;             // "程处ボ禦基"
-    float buy_vol;         // "程处ボ禦秖"
-    float sell;            // "程处ボ芥基"
-    float sell_vol;        // "程处ボ芥秖"
-    float epr;             // "セ痲ゑ"
+    wchar_t id[STOCK_ID_LEN];           // 靡ㄩ腹
+    wchar_t name[STOCK_NAME_LEN];       // "靡ㄩ嘿"
+    unsigned int stock;                 // "Θユ计"
+    unsigned int trade;                 // "Θユ掸计"
+    unsigned int vol;                   // "Θユ肂"
+    wchar_t open[STOCK_PRICE_LEN];      // "秨絃基"
+    wchar_t high[STOCK_PRICE_LEN];      // "程蔼基"
+    wchar_t low[STOCK_PRICE_LEN];       // "程基"
+    wchar_t close[STOCK_PRICE_LEN];     // "Μ絃基"
+    wchar_t sign;                       // "害禴(+/-)"
+    wchar_t diff[STOCK_PRICE_LEN];      // "害禴基畉"
+    wchar_t buy[STOCK_PRICE_LEN];       // "程处ボ禦基"
+    unsigned int buyVol;   // "程处ボ禦秖"
+    wchar_t sell[STOCK_PRICE_LEN];      // "程处ボ芥基"
+    unsigned int sellVol;              // "程处ボ芥秖"
+    wchar_t epr[STOCK_PRICE_LEN];       // "セ痲ゑ"
 }stockData, *pstockData;
 
 int csvhandler(char *csvFile);
@@ -58,24 +59,26 @@ void usage(char *app_name)
 }
 
 // return :     length of value
-int searchInDoubleQuotea(wchar_t *bufWC, wchar_t *buf)
+int searchInDoubleQuotea(wchar_t *bufWC, wchar_t *buf, unsigned int buf_len)
 {
     // passing string [XXX","YYY", ...]
     wchar_t *pCurr = NULL;
     int i =0;
+
 
     if(NULL == bufWC)
     {
         output_err(STRING_NULL);
         return 0;
     }
+
+    memset(buf, 0x0, buf_len);
+
     pCurr = bufWC;
 
     i = 0;
     while(L'"' != *(pCurr+i)) 
     {
-DEBUG_OUTPUT(">>> %d => %lc\n", __LINE__, *(pCurr+i));
-        DEBUG_OUTPUT("??? : >>>%lc\n ", *pCurr);
         *(buf+i) = *(pCurr+i);
         i++;
     }
@@ -93,6 +96,7 @@ unsigned int wcsConvToU_10b(wchar_t *wcs)
         return 0;
     ptr = wcs;
     
+    memset(buf, 0x0, sizeof(buf));
 DEBUG_OUTPUT(">>> string [%ls] \n", wcs);
     for(i = 0; 1; i++)
     {
@@ -139,6 +143,93 @@ DEBUG_OUTPUT(">>> %ld \n",  strtol( buf, NULL, 10));
 DEBUG_OUTPUT(">>> %ld \n",  strtol( buf, NULL, 10));
     return 0;
 }
+
+/*
+float wcsConvToF_10b(wchar_t *wcs)
+{
+    wchar_t *ptr = NULL ;
+    int i = 0;
+    char buf[BUFF_LEN];
+
+    if( NULL == wcs)
+        return 0;
+    ptr = wcs;
+    
+    memset(buf, 0x0, sizeof(buf));
+DEBUG_OUTPUT(">>> string [%ls] \n", wcs);
+    for(i = 0; 1; i++)
+    {
+DEBUG_OUTPUT(">>> %lc \n",  *(ptr+i));
+        switch(*(ptr+i))
+        {
+            case L'0':
+                buf[i] = '0';
+                break;
+            case L'1':
+                buf[i] = '1';
+                break;
+            case L'2':
+                buf[i] = '2';
+                break;
+            case L'3':
+                buf[i] = '3';
+                break;
+            case L'4':
+                buf[i] = '4';
+                break;
+            case L'5':
+                buf[i] = '5';
+                break;
+            case L'6':
+                buf[i] = '6';
+                break;
+            case L'7':
+                buf[i] = '7';
+                break;
+            case L'8':
+                buf[i] = '8';
+                break;
+            case L'9':
+                buf[i] = '9';
+                break;
+            case L'.':
+                buf[i] = '.';
+                break;
+            default : 
+DEBUG_OUTPUT(">>> %f \n",  (int)(strtof( buf, L'\0')*100)/100.0);
+                return (int)(strtof( buf, L'\0')*100)/100.0;
+                break;
+        }
+    }
+
+DEBUG_OUTPUT(">>> %f \n",  (int)(strtof( buf, L'\0')*100)/100.0);
+    return (int)(strtof( buf, L'\0')*100)/100.0;
+;
+}
+*/
+
+unsigned int jump_to_next_item(wchar_t *ptr)
+{
+    // ignore ','
+DEBUG_OUTPUT(">>> %lc \n",  *(ptr));
+DEBUG_OUTPUT(">>> %lc \n",  *(ptr+1));
+DEBUG_OUTPUT(">>> %lc \n",  *(ptr+2));
+    if( L',' == *(ptr))
+        if( L'\"' == *(ptr+1 ))
+            return 2;
+
+    // sarch next item,
+    if( L'\"' == *(ptr ))
+        if( L',' == *(ptr+1))
+            if( L'\"' == *(ptr+2 ))
+                return 3;
+
+    DEBUG_OUTPUT("Format error \n");
+    output_err(STRING_NULL);
+    return 0;
+
+}
+
 
 struct __STOCK__ * data_pasrer(wchar_t *bufWC)
 {
@@ -189,51 +280,194 @@ struct __STOCK__ * data_pasrer(wchar_t *bufWC)
 
 DEBUG_OUTPUT(">>> check data, first = %lc ,  found items = %d\n", bufWC[i], itemCount);
                 i++;
-                while ((L'\"' != (bufWC[i])) && (STOCK_ATTR_NUM > itemCount))
+                // mark, no need while loop to read.
+                // while ((L'\"' != (bufWC[i])) && (STOCK_ATTR_NUM > itemCount))
                 {
-DEBUG_OUTPUT(">============================================<\n");
+DEBUG_OUTPUT(">======================item %d======================<\n", itemCount);
                     // wchar_t id[];                         // 靡ㄩ腹
                     pVal = stockData.id;
-                    memset(pVal, 0x0, sizeof(pVal));
-                    len = searchInDoubleQuotea(&bufWC[i], pVal);
-DEBUG_OUTPUT(">>> get string [%d](%ls)\n",  len, pVal);
-#if 0
-                    memset(pVal, 0x0, sizeof(pVal));
+DEBUG_OUTPUT(">clear size_t %d\n", (int)sizeof(pVal));
+                    len = searchInDoubleQuotea(&bufWC[i], pVal, STOCK_ID_LEN);
+                    i = i + len + 1;
+                    itemCount++;
+DEBUG_OUTPUT(">>> get string [%d](%ls), i = %d, itemCount =%d\n",  len, pVal, i, itemCount);
+
+                    // jump to next data
+                    i += jump_to_next_item(&bufWC[i]);
+DEBUG_OUTPUT(">>> jump to next char [%d]\n",  i);
+
                     //    wchar_t name[STOCK_NAME_LEN];   // "靡ㄩ嘿"
+                    pVal = stockData.name;
+                    len = searchInDoubleQuotea(&bufWC[i], pVal, STOCK_NAME_LEN);
+                    i = i + len + 1;
+                    itemCount++;
+DEBUG_OUTPUT(">>> get string [%d](%ls), i = %d, itemCount =%d\n",  len, pVal, i, itemCount);
+
+                    // jump to next data
+                    i += jump_to_next_item(&bufWC[i]);
+DEBUG_OUTPUT(">>> jump to next char [%d]\n",  i);
+
                     pVal = value;
-                    memset(pVal, 0x0, sizeof(pVal));
                     //    unsigned int stock;             // "Θユ计"
-                    memset(pVal, 0x0, sizeof(pVal));
-                    stockData.id = wcsConvToU_10b( pVal);
+                    len = searchInDoubleQuotea(&bufWC[i], pVal, STOCK_VALUE_LEN);
+                    i = i + len + 1;
+                    itemCount++;
+                    stockData.stock = wcsConvToU_10b(pVal);
+DEBUG_OUTPUT(">>> get string [%d](%ls), i = %d, itemCount =%d\n",  len, pVal, i, itemCount);
+DEBUG_OUTPUT(">>> get  >>>>>>>>> <<<%u>>>\n",  stockData.stock);
+
+                    // jump to next data
+                    i += jump_to_next_item(&bufWC[i]);
+DEBUG_OUTPUT(">>> jump to next char [%d]\n",  i);
+
                     //    unsigned int trade;             // "Θユ掸计"
-                    memset(pVal, 0x0, sizeof(pVal));
+                    len = searchInDoubleQuotea(&bufWC[i], pVal, STOCK_VALUE_LEN);
+                    i = i + len + 1;
+                    itemCount++;
+                    stockData.trade = wcsConvToU_10b(pVal);
+DEBUG_OUTPUT(">>> get string [%d](%ls), i = %d, itemCount =%d\n",  len, pVal, i, itemCount);
+DEBUG_OUTPUT(">>> get  >>>>>>>>> <<<%u>>>\n",  stockData.trade);
+
+                    // jump to next data
+                    i += jump_to_next_item(&bufWC[i]);
+DEBUG_OUTPUT(">>> jump to next char [%d]\n",  i);
+
                     //    unsigned int vol;               // "Θユ肂"
-                    memset(pVal, 0x0, sizeof(pVal));
-                    //    float open;            // "秨絃基"
-                    memset(pVal, 0x0, sizeof(pVal));
-                    //    float high;            // "程蔼基"
-                    memset(pVal, 0x0, sizeof(pVal));
-                    //    float low;            // "程基"
-                    memset(pVal, 0x0, sizeof(pVal));
-                    //    float close;            // "Μ絃基"
-                    memset(pVal, 0x0, sizeof(pVal));
-                    //    unsigned char sign;             // "害禴(+/-)"
-                    memset(pVal, 0x0, sizeof(pVal));
-                    //    float diff;            // "害禴基畉"
-                    memset(pVal, 0x0, sizeof(pVal));
-                    //    float buy;             // "程处ボ禦基"
-                    memset(pVal, 0x0, sizeof(pVal));
-                    //    float buy_vol;         // "程处ボ禦秖"
-                    memset(pVal, 0x0, sizeof(pVal));
-                    //    float sell;            // "程处ボ芥基"
-                    memset(pVal, 0x0, sizeof(pVal));
-                    //    float sell_vol;        // "程处ボ芥秖"
-                    memset(pVal, 0x0, sizeof(pVal));
-                    //    float epr;             // "セ痲ゑ"
-#endif
+                    len = searchInDoubleQuotea(&bufWC[i], pVal, STOCK_VALUE_LEN);
+                    i = i + len + 1;
+                    itemCount++;
+                    stockData.vol = wcsConvToU_10b(pVal);
+DEBUG_OUTPUT(">>> get string [%d](%ls), i = %d, itemCount =%d\n",  len, pVal, i, itemCount);
+DEBUG_OUTPUT(">>> get  >>>>>>>>> <<<%u>>>\n",  stockData.vol);
+
+                    // jump to next data
+                    i += jump_to_next_item(&bufWC[i]);
+DEBUG_OUTPUT(">>> jump to next char [%d]\n",  i);
+
+                    //    wchar_t open[STOCK_PRICE_LEN];      // "秨絃基"
+                    pVal = stockData.open;
+                    len = searchInDoubleQuotea(&bufWC[i], pVal, STOCK_VALUE_LEN);
+                    i = i + len + 1;
+                    itemCount++;
+DEBUG_OUTPUT(">>> get string [%d](%ls), i = %d, itemCount =%d\n",  len, pVal, i, itemCount);
+
+                    // jump to next data
+                    i += jump_to_next_item(&bufWC[i]);
+DEBUG_OUTPUT(">>> jump to next char [%d]\n",  i);
+
+                    //    wchar_t high[STOCK_PRICE_LEN];      // "程蔼基"
+                    pVal = stockData.high;
+                    len = searchInDoubleQuotea(&bufWC[i], pVal, STOCK_VALUE_LEN);
+                    i = i + len + 1;
+                    itemCount++;
+DEBUG_OUTPUT(">>> get string [%d](%ls), i = %d, itemCount =%d\n",  len, pVal, i, itemCount);
+
+                    // jump to next data
+                    i += jump_to_next_item(&bufWC[i]);
+DEBUG_OUTPUT(">>> jump to next char [%d]\n",  i);
+
+                    //    wchar_t low[STOCK_PRICE_LEN];       // "程基"
+                    pVal = stockData.low;
+                    len = searchInDoubleQuotea(&bufWC[i], pVal, STOCK_VALUE_LEN);
+                    i = i + len + 1;
+                    itemCount++;
+DEBUG_OUTPUT(">>> get string [%d](%ls), i = %d, itemCount =%d\n",  len, pVal, i, itemCount);
+
+                    // jump to next data
+                    i += jump_to_next_item(&bufWC[i]);
+DEBUG_OUTPUT(">>> jump to next char [%d]\n",  i);
+
+                    //    wchar_t close[STOCK_PRICE_LEN];     // "Μ絃基"
+                    pVal = stockData.close;
+                    len = searchInDoubleQuotea(&bufWC[i], pVal, STOCK_VALUE_LEN);
+                    i = i + len + 1;
+                    itemCount++;
+DEBUG_OUTPUT(">>> get string [%d](%ls), i = %d, itemCount =%d\n",  len, pVal, i, itemCount);
+
+                    // jump to next data
+                    i += jump_to_next_item(&bufWC[i]);
+DEBUG_OUTPUT(">>> jump to next char [%d]\n",  i);
+
+                    //    wchar_t sign;                       // "害禴(+/-)"
+                    pVal = &stockData.sign;
+                    len = searchInDoubleQuotea(&bufWC[i], pVal, sizeof(stockData.sign));
+                    i = i + len + 1;
+                    itemCount++;
+DEBUG_OUTPUT(">>> get string [%d](%ls), i = %d, itemCount =%d\n",  len, pVal, i, itemCount);
+
+                    // jump to next data
+                    i += jump_to_next_item(&bufWC[i]);
+DEBUG_OUTPUT(">>> jump to next char [%d]\n",  i);
+
+                    //    wchar_t diff[STOCK_PRICE_LEN];      // "害禴基畉"
+                    pVal = stockData.diff;
+                    len = searchInDoubleQuotea(&bufWC[i], pVal, STOCK_VALUE_LEN);
+                    i = i + len + 1;
+                    itemCount++;
+DEBUG_OUTPUT(">>> get string [%d](%ls), i = %d, itemCount =%d\n",  len, pVal, i, itemCount);
+
+                    // jump to next data
+                    i += jump_to_next_item(&bufWC[i]);
+DEBUG_OUTPUT(">>> jump to next char [%d]\n",  i);
+
+                    //    wchar_t buy[STOCK_PRICE_LEN];       // "程处ボ禦基"
+                    pVal = stockData.diff;
+                    len = searchInDoubleQuotea(&bufWC[i], pVal, STOCK_VALUE_LEN);
+                    i = i + len + 1;
+                    itemCount++;
+DEBUG_OUTPUT(">>> get string [%d](%ls), i = %d, itemCount =%d\n",  len, pVal, i, itemCount);
+
+                    // jump to next data
+                    i += jump_to_next_item(&bufWC[i]);
+DEBUG_OUTPUT(">>> jump to next char [%d]\n",  i);
+
+                    //    wchar_t buyVol[STOCK_PRICE_LEN];   // "程处ボ禦秖"
+                    pVal = value;
+                    len = searchInDoubleQuotea(&bufWC[i], pVal, STOCK_VALUE_LEN);
+                    stockData.buyVol = wcsConvToU_10b(pVal);
+                    i = i + len + 1;
+                    itemCount++;
+DEBUG_OUTPUT(">>> get string [%d](%ls), i = %d, itemCount =%d\n",  len, pVal, i, itemCount);
+DEBUG_OUTPUT(">>> get  >>>>>>>>> <<<%u>>>\n",  stockData.buyVol);
+
+                    // jump to next data
+                    i += jump_to_next_item(&bufWC[i]);
+DEBUG_OUTPUT(">>> jump to next char [%d]\n",  i);
+
+                    //    wchar_t sell[STOCK_PRICE_LEN];      // "程处ボ芥基"
+                    pVal = stockData.sell;
+                    len = searchInDoubleQuotea(&bufWC[i], pVal, STOCK_VALUE_LEN);
+                    i = i + len + 1;
+                    itemCount++;
+DEBUG_OUTPUT(">>> get string [%d](%ls), i = %d, itemCount =%d\n",  len, pVal, i, itemCount);
+
+                    // jump to next data
+                    i += jump_to_next_item(&bufWC[i]);
+DEBUG_OUTPUT(">>> jump to next char [%d]\n",  i);
+//
+                    //    unsigned int sellVol;              // "程处ボ芥秖"
+                    pVal = value;
+                    len = searchInDoubleQuotea(&bufWC[i], pVal, STOCK_VALUE_LEN);
+                    stockData.sellVol = wcsConvToU_10b(pVal);
+                    i = i + len + 1;
+                    itemCount++;
+DEBUG_OUTPUT(">>> get string [%d](%ls), i = %d, itemCount =%d\n",  len, pVal, i, itemCount);
+DEBUG_OUTPUT(">>> get  >>>>>>>>> <<<%u>>>\n",  stockData.sellVol);
+
+                    // jump to next data
+                    i += jump_to_next_item(&bufWC[i]);
+DEBUG_OUTPUT(">>> jump to next char [%d]\n",  i);
+
+                    //    wchar_t epr[STOCK_PRICE_LEN];       // "セ痲ゑ"
+                    pVal = stockData.epr;
+                    len = searchInDoubleQuotea(&bufWC[i], pVal, STOCK_VALUE_LEN);
+                    i = i + len + 1;
+                    itemCount++;
+DEBUG_OUTPUT(">>> get string [%d](%ls), i = %d, itemCount =%d\n",  len, pVal, i, itemCount);
+
                     i=i+len+1; // '\"'+<data>+'\"'
                 }
-                itemCount++;
+                return &stockData;
                 break;
             }
             case L',': 
@@ -250,7 +484,7 @@ DEBUG_OUTPUT(">>> get string [%d](%ls)\n",  len, pVal);
         }
     } while ( (L'\0' != bufWC[i++]) && (STOCK_ATTR_NUM > itemCount)) ; // 
 
-    return &stockData;
+    return NULL;
 }
 
 
@@ -389,7 +623,6 @@ int csvhandler(char *csvFile)
     struct stat st;
     wint_t c ;
     wchar_t bufWC[BUFF_LEN];
-    unsigned int vcpm; //value character marker
     int i = 0 ;
     int ret = 0 ;
 
