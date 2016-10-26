@@ -494,18 +494,16 @@ int insert_stock_to_db(struct __STOCK__ * pData, char *date)
     ret = sqlite3_exec(dbStock, cmd, NULL, NULL, &errMsg);
     if( SQLITE_OK != ret && SQLITE_ROW != ret && SQLITE_DONE != ret )
     {
-        output_err(DB_INSERT_FAIL);
-        if(14 != ret) // if not UNIQUE
-            DEBUG_OUTPUT("Cause: \t[%s]\n", errMsg);
-
-        /* close database */
-        close_db(dbStock, ptable);
-        return -1;
+        if(SQLITE_CONSTRAINT != ret && SQLITE_CONSTRAINT_UNIQUE != ret) // if not UNIQUE
+        {
+            output_err(DB_INSERT_FAIL);
+            DEBUG_OUTPUT("Cause: \terr= %d:[%s]\n", ret , errMsg);
+        }
     }
 
     /* close database */
     close_db(dbStock, ptable);
-    return 0;
+    return ret;
 }
 
 int get_table_from_db( char *id )
