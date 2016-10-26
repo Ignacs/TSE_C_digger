@@ -6,7 +6,8 @@
 #include <iconv.h>
 #include <locale.h>
 #include <wchar.h>
-#include <math.h>
+//#include <math.h>
+#include <unistd.h>
 #include "header.h"
 
 
@@ -19,6 +20,8 @@
 
 #define ARGU_INPUT_PATH 1
 #define ARGU_OUTPUT_PATH 2
+
+#define MAX_PROC_NUM  2
 
 // database command
 #define CMD_QUERY_TRADEDAY          "SELECT * FROM TSETradeDay;"
@@ -65,6 +68,8 @@ int csvhandler(char *csvFile, char *data);
 static sqlite3 *dbTSE = NULL;
 // DB recodes the stock daily data.
 static sqlite3 *dbStock = NULL;
+// DB to query
+static sqlite3 *dbQuery= NULL;
 static unsigned int countDBOpen; 
 
 void usage(char *app_name)
@@ -374,14 +379,16 @@ static int openDB(char *pathDB, sqlite3 **db)
         return -1;
     }
 
-DEBUG_OUTPUT("db pointer address = %p\n", &db );
-DEBUG_OUTPUT("db address = %p\n", db );
+    DEBUG_OUTPUT("open db = %s\n", pathDB );
+#if 0
+    DEBUG_OUTPUT("db pointer address = %p\n", &db );
+    DEBUG_OUTPUT("db address = %p\n", db );
+#endif 
     ret = sqlite3_open_v2(pathDB, db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL);
     // increasing counter.
     if( SQLITE_OK == ret || SQLITE_ROW == ret || SQLITE_DONE == ret ) 
     {
         countDBOpen ++;
-DEBUG_OUTPUT("db address = %p\n", db );
     }
     else
         DEBUG_OUTPUT("Cause: \terrno = %d\n", ret );
@@ -488,7 +495,8 @@ int insert_stock_to_db(struct __STOCK__ * pData, char *date)
     if( SQLITE_OK != ret && SQLITE_ROW != ret && SQLITE_DONE != ret )
     {
         output_err(DB_INSERT_FAIL);
-        DEBUG_OUTPUT("Cause: \t[%s]\n", errMsg);
+        if(14 != ret) // if not UNIQUE
+            DEBUG_OUTPUT("Cause: \t[%s]\n", errMsg);
 
         /* close database */
         close_db(dbStock, ptable);
@@ -513,12 +521,13 @@ int get_table_from_db( char *id )
     memset(stockDBNamePath, 0x0, FILENAME_LEN);
     sprintf(stockDBNamePath, "%s/%s.sl3" , outputPath, id );
 
+    DEBUG_OUTPUT(">>>>> verify data insert  <<<< \n");
     ret = openDB(stockDBNamePath, &dbStock);
     if( SQLITE_OK != ret && SQLITE_ROW != ret && SQLITE_DONE != ret )
     {
         // db doesn't exist
         output_err(DB_NOT_FOUND);
-        DEBUG_OUTPUT("DB : %s\n", stockDBNamePath);
+        DEBUG_OUTPUT("DB : %s, err = %s \n", stockDBNamePath, sqlite3_errmsg(dbStock));
 
         /* close database */
         close_db(dbTSE, ptable);
@@ -529,7 +538,7 @@ int get_table_from_db( char *id )
     ret = sqlite3_get_table(dbTSE, CMD_QUERY_STOCK, &ptable, &rows, &cols, &errMsg);
     if( SQLITE_OK != ret && SQLITE_ROW != ret && SQLITE_DONE != ret )
     {
-        output_err(DB_CREATE_FAIL);
+        output_err(DB_QUERY_FAIL);
         DEBUG_OUTPUT("Cause: \terrno = %d, [%s]\n", ret , errMsg);
 
         /* close database */
@@ -612,8 +621,8 @@ int main(int argc, char *argv[])
     DEBUG_OUTPUT("DB file: \t[%s] \n", buf);
 
     countDBOpen = 0;
-DEBUG_OUTPUT("db pointer address = %p\n", &dbTSE);
-DEBUG_OUTPUT("db address = %p\n", dbTSE);
+    // DEBUG_OUTPUT("db pointer address = %p\n", &dbTSE);
+    // DEBUG_OUTPUT("db address = %p\n", dbTSE);
     ret = openDB(buf, &dbTSE);
     if( SQLITE_OK != ret && SQLITE_ROW != ret && SQLITE_DONE != ret )
     {
@@ -622,8 +631,8 @@ DEBUG_OUTPUT("db address = %p\n", dbTSE);
         close_db(dbTSE, table);
         exit(0);
     }
-DEBUG_OUTPUT("db pointer address = %p\n", &dbTSE);
-DEBUG_OUTPUT("db address = %p\n", dbTSE);
+    // DEBUG_OUTPUT("db pointer address = %p\n", &dbTSE);
+    // DEBUG_OUTPUT("db address = %p\n", dbTSE);
 
 #if SQL_DBG
     DEBUG_OUTPUT("DB open successfully \n");
@@ -657,11 +666,13 @@ DEBUG_OUTPUT("db address = %p\n", dbTSE);
         //  date2 0
         //  date3 1...
         //  => [data1][1][date2][0][date3][1]...
+        //
         if ((val = strtol(table[i*cols+1], &endptr, 10))==1) 
         {
             // trading day
             // sprintf(buf, "%s/%s", outputPath, table[i*cols]);
 #if SQL_DBG
+            DEBUG_OUTPUT("========================================================================\n");
             DEBUG_OUTPUT("Date: %s\t[%s]\n", table[i*cols], table[i*cols+1]);
 #endif //SQL_DBG
 
@@ -677,6 +688,13 @@ DEBUG_OUTPUT("db address = %p\n", dbTSE);
     DEBUG_OUTPUT("Total opened db : \t[%d]\n", countDBOpen);
 #endif  //SQL_DBG
     close_db(dbTSE, table);
+
+
+#if SQL_DBG
+    sprintf(buf, "0050");
+    get_table_from_db(buf);
+#endif
+
     exit(0);
 }
 
@@ -693,6 +711,10 @@ int csvhandler(char *csvFile, char *date)
     int i = 0 ;
     int ret = 0 ;
     char buf[BUFF_LEN];
+    pid_t pid, w;
+    pid_t pid_array[MAX_PROC_NUM];
+    int status;
+    int cntFork = 0;
 
     if(0 != stat(csvFile, &st))
     {
@@ -708,6 +730,11 @@ int csvhandler(char *csvFile, char *date)
         return 1;
     }
 
+    for(i = 0; i<MAX_PROC_NUM;i++ )
+    {
+        pid_array[i] = -1;
+    }
+
     if( pf = fopen(csvFile,"r") )
     {
         DEBUG_OUTPUT("open %s successfully\n", csvFile);
@@ -716,7 +743,7 @@ int csvhandler(char *csvFile, char *date)
         while( (c = fgetwc(pf)) != WEOF)
         {
 #if DEBUG
-            // DEBUG_OUTPUT("get %lc\n", c);
+        // DEBUG_OUTPUT("get %lc\n", c);
 #endif
             switch(c)
             {
@@ -794,22 +821,58 @@ int csvhandler(char *csvFile, char *date)
                             fclose(pf);
                             return 0;
                         }
-                        // pass to ETF_wcs_handler and return a struct store specified ETF's data.
-                        if((pstockData = data_pasrer(bufWC) ) == NULL)
-                            continue;
-                        else // pass to function to store in DB.
+
+                        // TODO : multi-process to handle all input. 
+                        if((pid = fork()) == 0) // child 
                         {
-                            ret = insert_stock_to_db(pstockData, date);
-#if SQL_DBG
-                            sprintf(buf, "%ls", pstockData->id);
-                            get_table_from_db(buf);
-#endif
+                            // pass to ETF_wcs_handler and return a struct store specified ETF's data.
+                            if((pstockData = data_pasrer(bufWC) ) == NULL)
+                                    exit(0);
+                            else // pass to function to store in DB.
+                            {
+                                ret = insert_stock_to_db(pstockData, date);
+                            }
+
+                            // DEBUG_OUTPUT("child : exit\n");
+                            exit(0);
                         }
-                    }
-                    break;
+
+                        //parent 
+                        // wait old child exit
+                        while (MAX_PROC_NUM> cntFork) break; ;
+
+                        // increasing one child pid 
+                        cntFork ++;
+                        for(i = 0; i<MAX_PROC_NUM;i++ )
+                        {
+                            if( -1 == pid_array[i])
+                                pid_array[i] = pid;
+                        }
+
+                        do{
+                            status = 0;
+                            // for(i = 0 ; i< MAX_PROC_NUM; i++)
+                            {
+                                w = waitpid(pid, &status, WUNTRACED );
+
+                                if (w == -1) {
+                                    perror("waitpid");
+                                }
+
+                                if (WIFEXITED(status)) 
+                                {
+                                //    DEBUG_OUTPUT("parent : exited, status=%d\n", WEXITSTATUS(status));
+
+                                    // child exit
+                                    cntFork --;
+                                }
+                            }
+                            // } while (!WIFEXITED(status) && !WIFSIGNALED(status));
+                        } while (0 < cntFork);
+                    } // while 
+                    break; // switch 
                 }
 #endif
-
                 default:
                 {
                     break;
@@ -824,6 +887,8 @@ int csvhandler(char *csvFile, char *date)
     }
 
     DEBUG_OUTPUT("%s has no related string...\n", csvFile);
+
+
 
     return 0;
 }
