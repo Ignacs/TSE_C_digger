@@ -34,6 +34,9 @@
 #define STOCK_NAME_LEN      32 
 #define STOCK_PRICE_LEN      32 
 
+#define TSE_DB 0
+#define STOCK_DB 0
+
 
 struct __STOCK__{
     wchar_t id[STOCK_ID_LEN];           // 靡ㄩ腹
@@ -57,6 +60,12 @@ struct __STOCK__{
 static char outputPath[PATH_LEN];
 
 int csvhandler(char *csvFile, char *data);
+
+// DB recodes the dates with trading.
+static sqlite3 *dbTSE = NULL;
+// DB recodes the stock daily data.
+static sqlite3 *dbStock = NULL;
+static unsigned int countDBOpen; 
 
 void usage(char *app_name)
 {
@@ -142,7 +151,7 @@ struct __STOCK__ * data_pasrer(wchar_t *bufWC)
     // "靡ㄩ腹","靡ㄩ嘿","Θユ计","Θユ掸计","Θユ肂","秨絃基","程蔼基","程基","Μ絃基","害禴(+/-)","害禴基畉","程处ボ禦基","程处ボ禦秖","程处ボ芥基","程处ボ芥秖","セ痲ゑ"
     memset(&stockData, 0x0, sizeof(stockData));
 
-    DEBUG_OUTPUT("parsing string: >>>%ls ", bufWC);
+    // DEBUG_OUTPUT("parsing string: >>>%ls ", bufWC);
 
     // initlal 
     i = 0;
@@ -172,34 +181,27 @@ struct __STOCK__ * data_pasrer(wchar_t *bufWC)
                     encounterFirstItem = 1;
                 }
 
-DEBUG_OUTPUT(">>> check data, first = %lc ,  found items = %d\n", bufWC[i], itemCount);
                 i++;
                 // mark, no need while loop to read.
                 // while ((L'\"' != (bufWC[i])) && (STOCK_ATTR_NUM > itemCount))
                 {
-DEBUG_OUTPUT(">======================item %d======================<\n", itemCount);
                     // wchar_t id[];                         // 靡ㄩ腹
                     pVal = stockData.id;
-DEBUG_OUTPUT(">clear size_t %d\n", (int)sizeof(pVal));
                     len = searchInDoubleQuotea(&bufWC[i], pVal, STOCK_ID_LEN);
                     i = i + len + 1;
                     itemCount++;
-DEBUG_OUTPUT(">>> get string [%d](%ls), i = %d, itemCount =%d\n",  len, pVal, i, itemCount);
 
                     // jump to next data
                     i += jump_to_next_item(&bufWC[i]);
-DEBUG_OUTPUT(">>> jump to next char [%d]\n",  i);
 
                     //    wchar_t name[STOCK_NAME_LEN];   // "靡ㄩ嘿"
                     pVal = stockData.name;
                     len = searchInDoubleQuotea(&bufWC[i], pVal, STOCK_NAME_LEN);
                     i = i + len + 1;
                     itemCount++;
-DEBUG_OUTPUT(">>> get string [%d](%ls), i = %d, itemCount =%d\n",  len, pVal, i, itemCount);
 
                     // jump to next data
                     i += jump_to_next_item(&bufWC[i]);
-DEBUG_OUTPUT(">>> jump to next char [%d]\n",  i);
 
                     pVal = value;
                     //    unsigned int stock;             // "Θユ计"
@@ -207,80 +209,63 @@ DEBUG_OUTPUT(">>> jump to next char [%d]\n",  i);
                     i = i + len + 1;
                     itemCount++;
                     stockData.stock = wcsConvToU_10b(pVal);
-DEBUG_OUTPUT(">>> get string [%d](%ls), i = %d, itemCount =%d\n",  len, pVal, i, itemCount);
-DEBUG_OUTPUT(">>> get  >>>>>>>>> <<<%u>>>\n",  stockData.stock);
 
                     // jump to next data
                     i += jump_to_next_item(&bufWC[i]);
-DEBUG_OUTPUT(">>> jump to next char [%d]\n",  i);
 
                     //    unsigned int trade;             // "Θユ掸计"
                     len = searchInDoubleQuotea(&bufWC[i], pVal, STOCK_VALUE_LEN);
                     i = i + len + 1;
                     itemCount++;
                     stockData.trade = wcsConvToU_10b(pVal);
-DEBUG_OUTPUT(">>> get string [%d](%ls), i = %d, itemCount =%d\n",  len, pVal, i, itemCount);
-DEBUG_OUTPUT(">>> get  >>>>>>>>> <<<%u>>>\n",  stockData.trade);
 
                     // jump to next data
                     i += jump_to_next_item(&bufWC[i]);
-DEBUG_OUTPUT(">>> jump to next char [%d]\n",  i);
 
                     //    unsigned int vol;               // "Θユ肂"
                     len = searchInDoubleQuotea(&bufWC[i], pVal, STOCK_VALUE_LEN);
                     i = i + len + 1;
                     itemCount++;
                     stockData.vol = wcsConvToU_10b(pVal);
-DEBUG_OUTPUT(">>> get string [%d](%ls), i = %d, itemCount =%d\n",  len, pVal, i, itemCount);
-DEBUG_OUTPUT(">>> get  >>>>>>>>> <<<%u>>>\n",  stockData.vol);
 
                     // jump to next data
                     i += jump_to_next_item(&bufWC[i]);
-DEBUG_OUTPUT(">>> jump to next char [%d]\n",  i);
 
                     //    wchar_t open[STOCK_PRICE_LEN];      // "秨絃基"
                     pVal = stockData.open;
                     len = searchInDoubleQuotea(&bufWC[i], pVal, STOCK_VALUE_LEN);
                     i = i + len + 1;
                     itemCount++;
-DEBUG_OUTPUT(">>> get string [%d](%ls), i = %d, itemCount =%d\n",  len, pVal, i, itemCount);
 
                     // jump to next data
                     i += jump_to_next_item(&bufWC[i]);
-DEBUG_OUTPUT(">>> jump to next char [%d]\n",  i);
 
                     //    wchar_t high[STOCK_PRICE_LEN];      // "程蔼基"
                     pVal = stockData.high;
                     len = searchInDoubleQuotea(&bufWC[i], pVal, STOCK_VALUE_LEN);
                     i = i + len + 1;
                     itemCount++;
-DEBUG_OUTPUT(">>> get string [%d](%ls), i = %d, itemCount =%d\n",  len, pVal, i, itemCount);
 
                     // jump to next data
                     i += jump_to_next_item(&bufWC[i]);
-DEBUG_OUTPUT(">>> jump to next char [%d]\n",  i);
 
                     //    wchar_t low[STOCK_PRICE_LEN];       // "程基"
                     pVal = stockData.low;
                     len = searchInDoubleQuotea(&bufWC[i], pVal, STOCK_VALUE_LEN);
                     i = i + len + 1;
                     itemCount++;
-DEBUG_OUTPUT(">>> get string [%d](%ls), i = %d, itemCount =%d\n",  len, pVal, i, itemCount);
 
                     // jump to next data
                     i += jump_to_next_item(&bufWC[i]);
-DEBUG_OUTPUT(">>> jump to next char [%d]\n",  i);
 
                     //    wchar_t close[STOCK_PRICE_LEN];     // "Μ絃基"
                     pVal = stockData.close;
                     len = searchInDoubleQuotea(&bufWC[i], pVal, STOCK_VALUE_LEN);
                     i = i + len + 1;
                     itemCount++;
-DEBUG_OUTPUT(">>> get string [%d](%ls), i = %d, itemCount =%d\n",  len, pVal, i, itemCount);
 
                     // jump to next data
                     i += jump_to_next_item(&bufWC[i]);
-DEBUG_OUTPUT(">>> jump to next char [%d]\n",  i);
 
                     //    wchar_t sign;                       // "害禴(+/-)"
                     //    狦ぃ害ぃ禴 эノ'='
@@ -290,33 +275,27 @@ DEBUG_OUTPUT(">>> jump to next char [%d]\n",  i);
                         *pVal = L'=';
                     i = i + len + 1;
                     itemCount++;
-DEBUG_OUTPUT(">>> get string [%d](%ls), i = %d, itemCount =%d\n",  len, pVal, i, itemCount);
 
                     // jump to next data
                     i += jump_to_next_item(&bufWC[i]);
-DEBUG_OUTPUT(">>> jump to next char [%d]\n",  i);
 
                     //    wchar_t diff[STOCK_PRICE_LEN];      // "害禴基畉"
                     pVal = stockData.diff;
                     len = searchInDoubleQuotea(&bufWC[i], pVal, STOCK_VALUE_LEN);
                     i = i + len + 1;
                     itemCount++;
-DEBUG_OUTPUT(">>> get string [%d](%ls), i = %d, itemCount =%d\n",  len, pVal, i, itemCount);
 
                     // jump to next data
                     i += jump_to_next_item(&bufWC[i]);
-DEBUG_OUTPUT(">>> jump to next char [%d]\n",  i);
 
                     //    wchar_t buy[STOCK_PRICE_LEN];       // "程处ボ禦基"
                     pVal = stockData.buy;
                     len = searchInDoubleQuotea(&bufWC[i], pVal, STOCK_VALUE_LEN);
                     i = i + len + 1;
                     itemCount++;
-DEBUG_OUTPUT(">>> get string [%d](%ls), i = %d, itemCount =%d\n",  len, pVal, i, itemCount);
 
                     // jump to next data
                     i += jump_to_next_item(&bufWC[i]);
-DEBUG_OUTPUT(">>> jump to next char [%d]\n",  i);
 
                     //    wchar_t buyVol[STOCK_PRICE_LEN];   // "程处ボ禦秖"
                     pVal = value;
@@ -324,23 +303,18 @@ DEBUG_OUTPUT(">>> jump to next char [%d]\n",  i);
                     stockData.buyVol = wcsConvToU_10b(pVal);
                     i = i + len + 1;
                     itemCount++;
-DEBUG_OUTPUT(">>> get string [%d](%ls), i = %d, itemCount =%d\n",  len, pVal, i, itemCount);
-DEBUG_OUTPUT(">>> get  >>>>>>>>> <<<%u>>>\n",  stockData.buyVol);
 
                     // jump to next data
                     i += jump_to_next_item(&bufWC[i]);
-DEBUG_OUTPUT(">>> jump to next char [%d]\n",  i);
 
                     //    wchar_t sell[STOCK_PRICE_LEN];      // "程处ボ芥基"
                     pVal = stockData.sell;
                     len = searchInDoubleQuotea(&bufWC[i], pVal, STOCK_VALUE_LEN);
                     i = i + len + 1;
                     itemCount++;
-DEBUG_OUTPUT(">>> get string [%d](%ls), i = %d, itemCount =%d\n",  len, pVal, i, itemCount);
 
                     // jump to next data
                     i += jump_to_next_item(&bufWC[i]);
-DEBUG_OUTPUT(">>> jump to next char [%d]\n",  i);
 //
                     //    unsigned int sellVol;              // "程处ボ芥秖"
                     pVal = value;
@@ -348,19 +322,15 @@ DEBUG_OUTPUT(">>> jump to next char [%d]\n",  i);
                     stockData.sellVol = wcsConvToU_10b(pVal);
                     i = i + len + 1;
                     itemCount++;
-DEBUG_OUTPUT(">>> get string [%d](%ls), i = %d, itemCount =%d\n",  len, pVal, i, itemCount);
-DEBUG_OUTPUT(">>> get  >>>>>>>>> <<<%u>>>\n",  stockData.sellVol);
 
                     // jump to next data
                     i += jump_to_next_item(&bufWC[i]);
-DEBUG_OUTPUT(">>> jump to next char [%d]\n",  i);
 
                     //    wchar_t epr[STOCK_PRICE_LEN];       // "セ痲ゑ"
                     pVal = stockData.epr;
                     len = searchInDoubleQuotea(&bufWC[i], pVal, STOCK_VALUE_LEN);
                     i = i + len + 1;
                     itemCount++;
-DEBUG_OUTPUT(">>> get string [%d](%ls), i = %d, itemCount =%d\n",  len, pVal, i, itemCount);
 
                     i=i+len+1; // '\"'+<data>+'\"'
                 }
@@ -394,10 +364,34 @@ void close_db(sqlite3 *db, char **table)
     sqlite3_close(db);
 }
 
+
+static int openDB(char *pathDB, sqlite3 **db)
+{
+    int ret ;
+
+    if(NULL == pathDB)
+    {
+        return -1;
+    }
+
+DEBUG_OUTPUT("db pointer address = %p\n", &db );
+DEBUG_OUTPUT("db address = %p\n", db );
+    ret = sqlite3_open_v2(pathDB, db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL);
+    // increasing counter.
+    if( SQLITE_OK == ret || SQLITE_ROW == ret || SQLITE_DONE == ret ) 
+    {
+        countDBOpen ++;
+DEBUG_OUTPUT("db address = %p\n", db );
+    }
+    else
+        DEBUG_OUTPUT("Cause: \terrno = %d\n", ret );
+    return ret;
+}
+
 // insert specified stock into its database
 int insert_stock_to_db(struct __STOCK__ * pData, char *date)
 {
-    sqlite3 *pdb = NULL;
+    struct stat st;
     char *errMsg = NULL;
     char **ptable = NULL ;
     char stockDBNamePath[FILENAME_LEN];
@@ -408,35 +402,39 @@ int insert_stock_to_db(struct __STOCK__ * pData, char *date)
     memset(stockDBNamePath, 0x0, FILENAME_LEN);
 
     sprintf(stockDBNamePath, "%s/%ls.sl3" , outputPath, pData->id );
+#if SQL_DBG
+    DEBUG_OUTPUT("DB opened: %s\n", stockDBNamePath);
+#endif
 
     /*
     for( i= 0 ;i<FILENAME_LEN; i++ )
     {
-DEBUG_OUTPUT("%c -", stockDBNamePath[i]);
+        DEBUG_OUTPUT("%c -", stockDBNamePath[i]);
     }
     */
 
-    if (sqlite3_open_v2(stockDBNamePath, &pdb, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL))
+    ret = openDB(stockDBNamePath, &dbStock);
+    if( SQLITE_OK != ret && SQLITE_ROW != ret && SQLITE_DONE != ret )
     {
         // db doesn't exist
         output_err(DB_NOT_FOUND);
-        DEBUG_OUTPUT("DB : %s\n", stockDBNamePath);
+        DEBUG_OUTPUT("DB : %s: err = %s\n", stockDBNamePath, sqlite3_errmsg(dbStock));
 
         /* close database */
-        close_db(pdb, ptable);
+        close_db(dbStock, ptable);
 
         return -1;
     }
 
     /* create table if not exist */
-    ret = sqlite3_exec(pdb, CMD_CREATE_TABLE_DAILY, 0, 0, &errMsg);
+    ret = sqlite3_exec(dbStock, CMD_CREATE_TABLE_DAILY, 0, 0, &errMsg);
     if( SQLITE_OK != ret && SQLITE_ROW != ret && SQLITE_DONE != ret )
     {
         output_err(DB_CREATE_FAIL);
         DEBUG_OUTPUT("Cause: \t[%s]\n", errMsg);
 
         /* close database */
-        close_db(pdb, ptable);
+        close_db(dbStock, ptable);
         return -1;
     }
 
@@ -475,34 +473,35 @@ DEBUG_OUTPUT("%c -", stockDBNamePath[i]);
     // DEBUG_OUTPUT(" %ls", pData->sell);
     // DEBUG_OUTPUT(" %d", pData->sellVol);
     // DEBUG_OUTPUT(" %ls", pData->epr);
-    DEBUG_OUTPUT("Execute cmd : [%s]\n", cmd);
+    // DEBUG_OUTPUT("Execute cmd : [%s]\n", cmd);
 
     // change locale to Big5
     if (!setlocale(LC_CTYPE, "zh_TW.Big5")) 
     {
         output_err(LC_SET_FAIL);
+        /* close database */
+        close_db(dbStock, ptable);
         return -2;
     }
 
-    ret = sqlite3_exec(pdb, cmd, NULL, NULL, &errMsg);
+    ret = sqlite3_exec(dbStock, cmd, NULL, NULL, &errMsg);
     if( SQLITE_OK != ret && SQLITE_ROW != ret && SQLITE_DONE != ret )
     {
         output_err(DB_INSERT_FAIL);
         DEBUG_OUTPUT("Cause: \t[%s]\n", errMsg);
 
         /* close database */
-        close_db(pdb, ptable);
+        close_db(dbStock, ptable);
         return -1;
     }
 
     /* close database */
-    close_db(pdb, ptable);
+    close_db(dbStock, ptable);
     return 0;
 }
 
 int get_table_from_db( char *id )
 {
-    sqlite3 *pdb = NULL;
     char *errMsg = NULL;
     char **ptable = NULL;
     int rows=0, cols=0;
@@ -514,31 +513,31 @@ int get_table_from_db( char *id )
     memset(stockDBNamePath, 0x0, FILENAME_LEN);
     sprintf(stockDBNamePath, "%s/%s.sl3" , outputPath, id );
 
-    if (sqlite3_open_v2(stockDBNamePath, &pdb, SQLITE_OPEN_READONLY, NULL))
+    ret = openDB(stockDBNamePath, &dbStock);
+    if( SQLITE_OK != ret && SQLITE_ROW != ret && SQLITE_DONE != ret )
     {
         // db doesn't exist
         output_err(DB_NOT_FOUND);
         DEBUG_OUTPUT("DB : %s\n", stockDBNamePath);
 
         /* close database */
-        close_db(pdb, ptable);
+        close_db(dbTSE, ptable);
         return -1;
     }
 
     /* create table if not exist */
-    ret = sqlite3_get_table(pdb, CMD_QUERY_STOCK, &ptable, &rows, &cols, &errMsg);
+    ret = sqlite3_get_table(dbTSE, CMD_QUERY_STOCK, &ptable, &rows, &cols, &errMsg);
     if( SQLITE_OK != ret && SQLITE_ROW != ret && SQLITE_DONE != ret )
     {
         output_err(DB_CREATE_FAIL);
-        DEBUG_OUTPUT("Cause: \t[%s]\n", errMsg);
+        DEBUG_OUTPUT("Cause: \terrno = %d, [%s]\n", ret , errMsg);
 
         /* close database */
-        close_db(pdb, ptable);
+        close_db(dbTSE, ptable);
         return -1;
     }
-    DEBUG_OUTPUT("total %d rows, %d cols\n", rows, cols);
-
-    DEBUG_OUTPUT("靡ㄩ腹\t靡ㄩ嘿\tΘユ计\tΘユ掸计\tΘユ肂\t秨絃基\t程蔼基\t程基\tΜ絃基\t害禴(+/-)\t害禴基畉\t程处ボ禦基\t程处ボ禦秖\t程处ボ芥基\t程处ボ芥秖\tセ痲ゑ\n");
+    // DEBUG_OUTPUT("total %d rows, %d cols\n", rows, cols);
+    // DEBUG_OUTPUT("靡ㄩ腹\t靡ㄩ嘿\tΘユ计\tΘユ掸计\tΘユ肂\t秨絃基\t程蔼基\t程基\tΜ絃基\t害禴(+/-)\t害禴基畉\t程处ボ禦基\t程处ボ禦秖\t程处ボ芥基\t程处ボ芥秖\tセ痲ゑ\n");
     // get specified stock data 
     for(i = 0 ; i<= rows; i++)
     {
@@ -564,7 +563,7 @@ int get_table_from_db( char *id )
 int main(int argc, char *argv[])
 {
     // output compiled date and time 
-    DEBUG_OUTPUT("Compiled date : \t[%s  %s] \n", __DATE__, __TIME__);
+    //DEBUG_OUTPUT("Compiled date : \t[%s  %s] \n", __DATE__, __TIME__);
 
     int rows=0, cols =0;
     int i = 0, j = 0 ;
@@ -576,7 +575,6 @@ int main(int argc, char *argv[])
     long int val = 0;
     int ret =0;
     // reference to database 
-    sqlite3 *db = NULL;
     // reference to table 
     char **table = NULL;
     char *errMsg = NULL;
@@ -612,25 +610,39 @@ int main(int argc, char *argv[])
     memset(buf, 0x0, sizeof(buf));
     sprintf(buf, "%s/%s", inputPath, TSE_DATE_CLASSIFIC);
     DEBUG_OUTPUT("DB file: \t[%s] \n", buf);
-    if (sqlite3_open_v2(buf, &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL))
+
+    countDBOpen = 0;
+DEBUG_OUTPUT("db pointer address = %p\n", &dbTSE);
+DEBUG_OUTPUT("db address = %p\n", dbTSE);
+    ret = openDB(buf, &dbTSE);
+    if( SQLITE_OK != ret && SQLITE_ROW != ret && SQLITE_DONE != ret )
     {
         // db doesn't exist
         output_err(DB_NOT_FOUND);
-        close_db(db, table);
+        close_db(dbTSE, table);
         exit(0);
     }
+DEBUG_OUTPUT("db pointer address = %p\n", &dbTSE);
+DEBUG_OUTPUT("db address = %p\n", dbTSE);
 
 #if SQL_DBG
     DEBUG_OUTPUT("DB open successfully \n");
 #endif //SQL_DBG
 
+    if( NULL == dbTSE )
+    {
+        output_err(DB_OPEN_FAIL);
+        close_db(dbTSE, table);
+        exit(0);
+    }
+
     // query all trading days.
-    ret = sqlite3_get_table(db , CMD_QUERY_TRADEDAY, &table, &rows, &cols, &errMsg);
+    ret = sqlite3_get_table(dbTSE , CMD_QUERY_TRADEDAY, &table, &rows, &cols, &errMsg);
     if( SQLITE_OK != ret && SQLITE_ROW != ret && SQLITE_DONE != ret )
     {
         output_err(DB_QUERY_FAIL);
-        DEBUG_OUTPUT("Cause: \t[%s]\n", errMsg);
-        close_db(db, table);
+        DEBUG_OUTPUT("Cause: \terrno = %d, [%s]\n", ret , errMsg);
+        close_db(dbTSE, table);
         exit(0);
     }
 
@@ -661,7 +673,10 @@ int main(int argc, char *argv[])
         }
     }
 
-    close_db(db, table);
+#if SQL_DBG
+    DEBUG_OUTPUT("Total opened db : \t[%d]\n", countDBOpen);
+#endif  //SQL_DBG
+    close_db(dbTSE, table);
     exit(0);
 }
 
@@ -763,7 +778,7 @@ int csvhandler(char *csvFile, char *date)
 #if 1 // т碝ETF, パ'='秨﹍﹃
                 case '=':
                 {
-                    DEBUG_OUTPUT("get ETF, try to get whole stock line by line\n");
+                    // DEBUG_OUTPUT("get ETF, try to get whole stock line by line\n");
                     //絃参璸戈癟 => a trading day
                     memset(bufWC, 0x0, sizeof(bufWC));
 
@@ -771,6 +786,7 @@ int csvhandler(char *csvFile, char *date)
                     // parse all stocks to last one
                     while(fgetws(bufWC, sizeof(bufWC), pf) != NULL)
                     {
+                        DEBUG_OUTPUT("------------------------------------------------\n");
                         // if "弧" appears, it means no more data, so stop read file.
                         if(!wcsncmp(L"\"弧\"", bufWC, (int)wcslen(L"\"弧\"")))
                         {
@@ -784,12 +800,10 @@ int csvhandler(char *csvFile, char *date)
                         else // pass to function to store in DB.
                         {
                             ret = insert_stock_to_db(pstockData, date);
-
 #if SQL_DBG
                             sprintf(buf, "%ls", pstockData->id);
                             get_table_from_db(buf);
 #endif
-
                         }
                     }
                     break;
