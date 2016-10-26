@@ -22,6 +22,7 @@ typedef enum{
     ROC_YEAR_NOT_SUPPORT,
     ARGU_NOT_SUPPORT,
     DB_NOT_FOUND,
+    DB_OPEN_FAIL,
     DB_CREATE_FAIL,
     DB_INSERT_FAIL,
     DB_QUERY_FAIL,
@@ -61,6 +62,9 @@ void output_err(unsigned int err)
         case DB_NOT_FOUND:
             DEBUG_OUTPUT("Database error : Database not found\n");
             break;
+        case DB_OPEN_FAIL:
+            DEBUG_OUTPUT("Database error : Database open fail \n");
+            break;
         case DB_CREATE_FAIL:
             DEBUG_OUTPUT("Database error : Database table create fail\n");
             break;
@@ -95,13 +99,11 @@ unsigned int wcsConvToU_10b(wchar_t *wcs)
 
     if( NULL == wcs)
         return 0;
+
     ptr = wcs;
-    
     memset(buf, 0x0, sizeof(buf));
-DEBUG_OUTPUT(">>> string [%ls] \n", wcs);
     for(i = 0; 1; i++)
     {
-DEBUG_OUTPUT(">>> %lc \n",  *(ptr+i));
         switch(*(ptr+i))
         {
             case L'0':
@@ -135,13 +137,11 @@ DEBUG_OUTPUT(">>> %lc \n",  *(ptr+i));
                 buf[i] = '9';
                 break;
             default : 
-DEBUG_OUTPUT(">>> %ld \n",  strtol( buf, NULL, 10));
                 return strtol( buf, NULL, 10);
                 break;
         }
     }
 
-DEBUG_OUTPUT(">>> %ld \n",  strtol( buf, NULL, 10));
     return 0;
 }
 
