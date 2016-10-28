@@ -1,5 +1,6 @@
 
 #include <errno.h>
+#include <sqlite3.h>
 
 #define BUFF_LEN 4096
 
@@ -10,7 +11,10 @@
 #define DEBUG_OUTPUT( formats, args...) do{ \
                 fprintf(stderr, "%s:%d > ", __FUNCTION__, __LINE__); \
                 fprintf(stderr, formats, ##args); \
-            }while(0);
+            }while(0)
+
+#define READONLY    SQLITE_OPEN_READONLY
+#define READWRITE   SQLITE_OPEN_READWRITE 
 
 typedef enum{
     ARG_NOT_ENOUGH,
@@ -145,4 +149,49 @@ unsigned int wcsConvToU_10b(wchar_t *wcs)
     return 0;
 }
 
+//
+static int openDB(char *pathDB, int rw, sqlite3 **db)
+{
+    int ret ;
 
+    if(NULL == pathDB)
+    {
+        DEBUG_OUTPUT("Database not exist = %s\n", pathDB );
+        return -1;
+    }
+
+#if 0
+    DEBUG_OUTPUT("db pointer address = %p\n", &db );
+    DEBUG_OUTPUT("db address = %p\n", db );
+#endif 
+    if(READONLY == rw)
+        ret = sqlite3_open_v2(pathDB, db, SQLITE_OPEN_READONLY, NULL);
+    else 
+        ret = sqlite3_open_v2(pathDB, db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL);
+    // increasing counter.
+    if( SQLITE_OK == ret || SQLITE_ROW == ret || SQLITE_DONE == ret ) 
+    {
+        // countDBOpen ++;
+        DEBUG_OUTPUT("open data successfull\n");
+    }
+    else
+        DEBUG_OUTPUT("Cause: \terrno = %d\n", ret );
+    return ret;
+}
+
+void close_db(sqlite3 *db, char **table)
+{
+    /* free */
+    if(NULL != table)
+    {
+        DEBUG_OUTPUT("clear table \n" );
+        sqlite3_free_table(table);
+    }
+
+    /* close database */
+    if(NULL != db)
+    {
+        DEBUG_OUTPUT("clear database \n" );
+        sqlite3_close(db);
+    }
+}

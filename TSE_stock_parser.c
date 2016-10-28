@@ -2,8 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
-#include <sqlite3.h>
-#include <iconv.h>
+//#include <iconv.h>
 #include <locale.h>
 #include <wchar.h>
 //#include <math.h>
@@ -65,16 +64,13 @@ static char outputPath[PATH_LEN];
 int csvhandler(char *csvFile, char *data);
 
 // DB recodes the dates with trading.
-static sqlite3 *dbTSE = NULL;
-// DB recodes the stock daily data.
-static sqlite3 *dbStock = NULL;
 // DB to query
 static sqlite3 *dbQuery= NULL;
 static unsigned int countDBOpen; 
 
 void usage(char *app_name)
 {
-    DEBUG_OUTPUT( "%s <Folder contains csv fllies download from TSE> <ouptut foloder>\n" , app_name)
+    DEBUG_OUTPUT( "%s <Folder contains csv fllies download from TSE> <ouptut foloder>\n" , app_name);
 }
 
 // return :     length of value
@@ -111,7 +107,7 @@ int searchInDoubleQuotea(wchar_t *bufWC, wchar_t *buf, unsigned int buf_len)
     // check '--'  , change to -1
     if(!wcsncmp(pCurr, L"--", 2 )) 
     {
-        DEBUG_OUTPUT( "encounter --, change to -1\n" )
+        DEBUG_OUTPUT( "encounter --, change to -1\n" );
         *(buf+1) = L'1';
     }
 
@@ -359,41 +355,8 @@ struct __STOCK__ * data_pasrer(wchar_t *bufWC)
     return NULL;
 }
 
-void close_db(sqlite3 *db, char **table)
-{
-    /* free */
-    if(NULL != table)
-        sqlite3_free_table(table);
-
-    /* close database */
-    sqlite3_close(db);
-}
 
 
-static int openDB(char *pathDB, sqlite3 **db)
-{
-    int ret ;
-
-    if(NULL == pathDB)
-    {
-        return -1;
-    }
-
-    DEBUG_OUTPUT("open db = %s\n", pathDB );
-#if 0
-    DEBUG_OUTPUT("db pointer address = %p\n", &db );
-    DEBUG_OUTPUT("db address = %p\n", db );
-#endif 
-    ret = sqlite3_open_v2(pathDB, db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL);
-    // increasing counter.
-    if( SQLITE_OK == ret || SQLITE_ROW == ret || SQLITE_DONE == ret ) 
-    {
-        countDBOpen ++;
-    }
-    else
-        DEBUG_OUTPUT("Cause: \terrno = %d\n", ret );
-    return ret;
-}
 
 // insert specified stock into its database
 int insert_stock_to_db(struct __STOCK__ * pData, char *date)
@@ -405,6 +368,8 @@ int insert_stock_to_db(struct __STOCK__ * pData, char *date)
     char cmd[CMD_LEN];
     int i = 0;
     int ret = 0;
+    // DB recodes the stock daily data.
+    static sqlite3 *dbStock = NULL;
 
     memset(stockDBNamePath, 0x0, FILENAME_LEN);
 
@@ -420,7 +385,7 @@ int insert_stock_to_db(struct __STOCK__ * pData, char *date)
     }
     */
 
-    ret = openDB(stockDBNamePath, &dbStock);
+    ret = openDB(stockDBNamePath, READWRITE,&dbStock);
     if( SQLITE_OK != ret && SQLITE_ROW != ret && SQLITE_DONE != ret )
     {
         // db doesn't exist
@@ -491,6 +456,7 @@ int insert_stock_to_db(struct __STOCK__ * pData, char *date)
         return -2;
     }
 
+    // insert data
     ret = sqlite3_exec(dbStock, cmd, NULL, NULL, &errMsg);
     if( SQLITE_OK != ret && SQLITE_ROW != ret && SQLITE_DONE != ret )
     {
@@ -515,12 +481,14 @@ int get_table_from_db( char *id )
     char cmd[CMD_LEN];
     int i = 0, j = 0;
     int ret = 0;
+    // DB recodes the stock daily data.
+    static sqlite3 *dbStock = NULL;
 
     memset(stockDBNamePath, 0x0, FILENAME_LEN);
     sprintf(stockDBNamePath, "%s/%s.sl3" , outputPath, id );
 
     DEBUG_OUTPUT(">>>>> verify data insert  <<<< \n");
-    ret = openDB(stockDBNamePath, &dbStock);
+    ret = openDB(stockDBNamePath, SQLITE_OPEN_READONLY,&dbStock);
     if( SQLITE_OK != ret && SQLITE_ROW != ret && SQLITE_DONE != ret )
     {
         // db doesn't exist
@@ -528,19 +496,19 @@ int get_table_from_db( char *id )
         DEBUG_OUTPUT("DB : %s, err = %s \n", stockDBNamePath, sqlite3_errmsg(dbStock));
 
         /* close database */
-        close_db(dbTSE, ptable);
+        close_db(dbStock, ptable);
         return -1;
     }
 
     /* create table if not exist */
-    ret = sqlite3_get_table(dbTSE, CMD_QUERY_STOCK, &ptable, &rows, &cols, &errMsg);
+    ret = sqlite3_get_table(dbStock, CMD_QUERY_STOCK, &ptable, &rows, &cols, &errMsg);
     if( SQLITE_OK != ret && SQLITE_ROW != ret && SQLITE_DONE != ret )
     {
         output_err(DB_QUERY_FAIL);
         DEBUG_OUTPUT("Cause: \terrno = %d, [%s]\n", ret , errMsg);
 
         /* close database */
-        close_db(dbTSE, ptable);
+        close_db(dbStock, ptable);
         return -1;
     }
     // DEBUG_OUTPUT("total %d rows, %d cols\n", rows, cols);
@@ -571,7 +539,9 @@ int main(int argc, char *argv[])
 {
     // output compiled date and time 
     //DEBUG_OUTPUT("Compiled date : \t[%s  %s] \n", __DATE__, __TIME__);
+    static sqlite3 *dbTSE = NULL;
 
+    char **ptable = NULL ;
     int rows=0, cols =0;
     int i = 0, j = 0 ;
     char inputPath[PATH_LEN];
@@ -588,7 +558,7 @@ int main(int argc, char *argv[])
 
     if ( 3 > argc) 
     {
-        DEBUG_OUTPUT( "Too few arguments\n")
+        DEBUG_OUTPUT( "Too few arguments\n");
         usage(argv[0]);
         exit(0);
     }
@@ -621,12 +591,12 @@ int main(int argc, char *argv[])
     countDBOpen = 0;
     // DEBUG_OUTPUT("db pointer address = %p\n", &dbTSE);
     // DEBUG_OUTPUT("db address = %p\n", dbTSE);
-    ret = openDB(buf, &dbTSE);
+    ret = openDB(buf, READONLY,&dbTSE);
     if( SQLITE_OK != ret && SQLITE_ROW != ret && SQLITE_DONE != ret )
     {
         // db doesn't exist
         output_err(DB_NOT_FOUND);
-        close_db(dbTSE, table);
+        close_db(dbTSE, ptable);
         exit(0);
     }
     // DEBUG_OUTPUT("db pointer address = %p\n", &dbTSE);
@@ -639,7 +609,7 @@ int main(int argc, char *argv[])
     if( NULL == dbTSE )
     {
         output_err(DB_OPEN_FAIL);
-        close_db(dbTSE, table);
+        close_db(dbTSE, ptable);
         exit(0);
     }
 
@@ -649,7 +619,7 @@ int main(int argc, char *argv[])
     {
         output_err(DB_QUERY_FAIL);
         DEBUG_OUTPUT("Cause: \terrno = %d, [%s]\n", ret , errMsg);
-        close_db(dbTSE, table);
+        close_db(dbTSE, ptable);
         exit(0);
     }
 
@@ -683,9 +653,9 @@ int main(int argc, char *argv[])
     }
 
 #if SQL_DBG
-    DEBUG_OUTPUT("Total opened db : \t[%d]\n", countDBOpen);
+    // DEBUG_OUTPUT("Total opened db : \t[%d]\n", countDBOpen);
 #endif  //SQL_DBG
-    close_db(dbTSE, table);
+    close_db(dbTSE, ptable);
 
 
 #if SQL_DBG
@@ -854,7 +824,9 @@ int csvhandler(char *csvFile, char *date)
                                 w = waitpid(pid, &status, WUNTRACED );
 
                                 if (w == -1) {
-                                    perror("waitpid");
+                                    // perror("waitpid"); << == it will exit the application dangerly.
+                                    DEBUG_OUTPUT("No child process\n");
+                                    cntFork --;
                                 }
 
                                 if (WIFEXITED(status)) 
@@ -865,7 +837,6 @@ int csvhandler(char *csvFile, char *date)
                                     cntFork --;
                                 }
                             }
-                            // } while (!WIFEXITED(status) && !WIFSIGNALED(status));
                         } while (0 < cntFork);
                     } // while 
                     break; // switch 
