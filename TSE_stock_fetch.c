@@ -17,9 +17,7 @@
 #define FILENAME_LEN 256
 
 // database command
-// 
 #define CMD_CREATE_TABLE    "CREATE TABLE IF NOT EXISTS TSETradeDay( date int, tradingDay bit);"
-// "INSERT INTO Contact VALUES(NULL, 'Fred', '09990123456');";
 #define CMD_INSERT_TABLE    "INSERT INTO TSETradeDay VALUES"
 #define CMD_QUERY_TABLE     "SELECT * FROM TSETradeDay;"
 
@@ -242,8 +240,14 @@ int main(int argc, char **argv)
                     {
                         switch(res)
                         {
+                            case CURLE_COULDNT_RESOLVE_HOST :
+                            case CURLE_COULDNT_CONNECT :
+                                DEBUG_OUTPUT("Error while fetching '%s' : err(%d), %s => %s\n", fetchURL, res, curl_easy_strerror(res), cmd);
+                                // stop  to download.
+                                i = dayBack ;
+                                break;
                             default:
-                                DEBUG_OUTPUT("rror while fetching '%s' : err(%d), %s => %s\n", fetchURL, res, curl_easy_strerror(res), cmd);
+                                DEBUG_OUTPUT("Error while fetching '%s' : err(%d), %s => %s\n", fetchURL, res, curl_easy_strerror(res), cmd);
                                 break;
                         }
                     }
