@@ -18,7 +18,11 @@
 #define CMD_QUERY_STOCK     "SELECT * FROM DailyData ORDER by date;"
 // #define CMD_QUERY_STOCK     "SELECT * FROM sqlite_master;"
 
-#define DBG     1
+#define DBG     0
+#if DBG
+    char largeBuf[BUF_LEN][BUF_LEN];
+#endif 
+
 
 void usage(char *app_name)
 {
@@ -31,6 +35,7 @@ static char **ptable = NULL;
 static char **pDailyData= NULL;
 static sqlite3 *db = NULL;
 FILE    *inputFp = NULL;
+unsigned int memCount = 0;
 
 void finalize(const char *func, int line)
 {
@@ -49,10 +54,20 @@ void finalize(const char *func, int line)
 
     if(NULL != pDailyData)
     {
+#if !DBG
         free(pDailyData);
+#endif
+
+        memCount -- ;
+    }
+    // if there is still memory that not be free before exit.
+    if( memCount > 0)
+    {
+        DEBUG_OUTPUT( "clear input file pointer \n");
     }
 
     close_db(db, ptable);
+
 }
 
 int open_shared_lib(char *libPath)
@@ -90,6 +105,21 @@ DEBUG_OUTPUT( "Open shared library :%s\n", buf);
     return 1;
 }
 
+char **getMemSpace( unsigned int memBlks, unsigned int memSize)
+{
+    char **buf = NULL;
+
+#if DBG
+    buf = (char **)&largeBuf;
+#else
+//    if((buf = (char **)calloc( )) != NULL)
+#endif
+    {
+        memCount++;
+    }
+    return buf; 
+}
+
 int get_stock_daily_data(char *dbName, char **dailyData)
 {
 #define WRITE_SIDE 1
@@ -101,7 +131,7 @@ int get_stock_daily_data(char *dbName, char **dailyData)
     int ret = 0;
     int rows = 0, cols = 0, size = 0;
     char *errMsg = NULL;
-    int i = 0, j = 0;
+    int i = 0, j = 0, k = 0;
     int pipefd[2] ;
     char buf[BUF_LEN] ;
     char *ptr=NULL, *saveptr;
@@ -136,6 +166,7 @@ DEBUG_OUTPUT( "get data=> %s\n", dbName);
             {
 fprintf(stderr, "rows = %d\tcols =%d\n", rows, cols);
 
+                // find the maximum element to set the size arguemnt 
                 size = 0;
                 for(i = 1 ; i< rows ; i++)
                 {
@@ -244,6 +275,7 @@ DEBUG_OUTPUT("[Parent] : close write pipe \n");
         {
 DEBUG_OUTPUT("[Parent] :  %s\n", ptr);
             rows = strtol(ptr, NULL, 10);
+            rows --;  //remopve the line includes title.
 DEBUG_OUTPUT("[Parent] :  rows = %d\n", rows);
             if(0 < rows)
             {
@@ -273,13 +305,38 @@ DEBUG_OUTPUT("[Parent] :  size = %d\n", size);
         if(0 == ret)
         {
             // create string array according return value , each string  has CMD_LEN bytes;
-            /*
-            = (char **)calloc( rows * cols, size);
-            if(NULL != ptable)
+            // data structure 
+            // [date] [stockNum] [tradeNum] [volume] [open] [high] [low] [close] [sign] [diff] [buy] [buyVol] [sell] [sellVol] [epr]
+            pDailyData = getMemSpace(rows * cols, size);
+            if(NULL != pDailyData)
             {
+                for(i = 0 ; i < rows; i++)
+                {
+                    for(j = 0 ; j < cols; j++)
+                    {
+                        // read length = (string) + (,)
+                        memset(buf, 0x0, sizeof(buf));
+                        k = 0;
+                        do
+                        {
+                            len += ret = read ( pipefd[READ_SIDE], &buf[k], 1 );
+                            if(ret >  0 && ',' == buf[k])
+                            {
+                                strncpy( (char *)pDailyData+(i*cols)+j, (const char*)buf, k);
+                                *( pDailyData+(i*cols)+j+1) = '\0';
+fprintf( stderr, "[%d][%d] %s\t", i, j, (char *)pDailyData+(i*cols)+j);
+                                k = 0;
+                                break;
+                            } //if 
+                            k++;
+                        } while(k < BUF_LEN);
+fprintf( stderr, "\n");
+                    }// for j
+                    DEBUG_OUTPUT( "\n");
+                } // for i
 
+                DEBUG_OUTPUT( "[parent] : total=%d \n", len);
             }
-            */
         }
 
         status = 0;
@@ -304,6 +361,11 @@ DEBUG_OUTPUT("[Parent] :  size = %d\n", size);
     return ret ;
 }
 
+void initialize()
+{
+    memCount = 0;
+}
+
 int main(int argc, char **argv)
 {
     struct stat st;
@@ -321,6 +383,7 @@ int main(int argc, char **argv)
     int i = 0;
 
 
+    initialize();
     if ( ARGU_NUM > argc ) 
     {
         DEBUG_OUTPUT( "Too few arguments\n");
