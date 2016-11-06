@@ -186,6 +186,7 @@ void close_db(sqlite3 *db, char **table)
     {
         DEBUG_OUTPUT("clear table \n" );
         sqlite3_free_table(table);
+        table =NULL;
     }
 
     /* close database */
@@ -193,5 +194,6 @@ void close_db(sqlite3 *db, char **table)
     {
         DEBUG_OUTPUT("clear database \n" );
         sqlite3_close(db);
+        db = NULL;
     }
 }
