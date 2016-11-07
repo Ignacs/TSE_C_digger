@@ -4,7 +4,6 @@
 #include <string.h>
 #include <stdlib.h>
 #include <dlfcn.h>
-#include <unistd.h>
 #include <fcntl.h>
 #include <signal.h>
 
@@ -12,10 +11,11 @@
 
 #define ARGU_NUM 11
 #define NECESSARY_ARGC 5
-#define CMD_LEN 1024 
-#define PATH_LEN 1024 
+#define CMD_LEN 1024
+#define PATH_LEN 1024
 #define FILENAME_LEN 256
 #define BUF_LEN 4096
+#define STOCK_ELE 14
 
 #define WRITE_SIDE 1
 #define READ_SIDE 0
@@ -28,7 +28,7 @@
 #define DBG     1
 #if DBG
     char largeBuf[BUF_LEN][BUF_LEN];
-#endif 
+#endif
 
 
 void usage(char *app_name)
@@ -39,11 +39,13 @@ void usage(char *app_name)
 static void *fHandle = NULL;
 static void (*indicator)();
 static char **ptable = NULL;
-static char **pDailyData= NULL;
+static char **pStorckStrData= NULL;
 static sqlite3 *db = NULL;
 FILE    *inputFp = NULL;
 unsigned int memCount = 0;
 int pipefd[2] ;
+struct stock_daily **pStockDigitData = NULL;
+
 
 void finalize(const char *func, int line)
 {
@@ -67,14 +69,24 @@ void finalize(const char *func, int line)
         inputFp = NULL;
     }
 
-    if(NULL != pDailyData)
+    if(NULL != pStorckStrData)
     {
 #if !DBG
-        free(pDailyData);
+        free(pStorckStrData);
 #endif
-        pDailyData = NULL;
+        pStorckStrData = NULL;
         memCount -- ;
     }
+
+    if(NULL != pStockDigitData)
+    {
+#if !DBG
+        free(pStockDigitData);
+#endif
+        pStockDigitData = NULL;
+        memCount -- ;
+    }
+
     // if there is still memory that not be free before exit.
     if( memCount > 0)
     {
@@ -125,13 +137,14 @@ char **getMemSpace( unsigned int memBlks, unsigned int memSize)
 
 #if DBG
     buf = (char **)&largeBuf;
+    DEBUG_OUTPUT( "&largeBuf addr = %p \n", &largeBuf );
 #else
 //    if((buf = (char **)calloc( )) != NULL)
 #endif
     {
         memCount++;
     }
-    return buf; 
+    return buf;
 }
 
 static void signal_handler(int signo)
@@ -173,12 +186,12 @@ static void signal_handler(int signo)
     return;
 }
 
-// return 1 : get data
+// return 1 : (rows-1)  // decrease the row of title
 // return 0 : fail to get dbata
-int get_stock_daily_data(char *dbName, char **dailyData)
+int get_stock_daily_data(char *dbName, char ***dailyData)
 {
     char *delim = ",";
-    pid_t pid,w; 
+    pid_t pid,w;
     // int cntFork = 0;
     int status = 0;
     int ret = 0;
@@ -188,8 +201,9 @@ int get_stock_daily_data(char *dbName, char **dailyData)
     char buf[BUF_LEN] ;
     char *ptr=NULL, *saveptr;
     int len = 0;
+    char **pCurr = NULL;
 
-    // create pipe 
+    // create pipe
     if(0 > (ret = pipe (pipefd)))
     {
         DEBUG_OUTPUT( "pipe create fail = %d, %s\n", errno, strerror(errno));
@@ -214,7 +228,7 @@ DEBUG_OUTPUT( " open database : %s \n", dbName);
         ret = openDB(dbName, READONLY, &db);
 
         // open successfully
-        if( SQLITE_OK == ret || SQLITE_ROW == ret || SQLITE_DONE == ret ) 
+        if( SQLITE_OK == ret || SQLITE_ROW == ret || SQLITE_DONE == ret )
         {
 DEBUG_OUTPUT( "get data=> %s\n", dbName);
             ret = sqlite3_get_table(db , CMD_QUERY_STOCK, &ptable, &rows, &cols, &errMsg);
@@ -222,7 +236,7 @@ DEBUG_OUTPUT( "get data=> %s\n", dbName);
             {
 fprintf(stderr, "rows = %d\tcols =%d\n", rows, cols);
 
-                // find the maximum element to set the size arguemnt 
+                // find the maximum element to set the size arguemnt
                 size = 0;
                 for(i = 1 ; i< rows ; i++)
                 {
@@ -284,33 +298,33 @@ DEBUG_OUTPUT( "pipe create = %d, %d\n", pipefd[0], pipefd[1]);
         /* recycle resource */
         finalize(__FUNCTION__, __LINE__);
 
-        // close pipe 
+        // close pipe
         close(pipefd[WRITE_SIDE]);
 
         if(-1 < ret)
             return 0;
-        else 
+        else
             return -1;
     }
 
-    // parent 
+    // parent
 DEBUG_OUTPUT( "=================== parent continue:  ==================================\n");
 
 DEBUG_OUTPUT("[Parent] : close write pipe \n");
     close(pipefd[WRITE_SIDE]);
 
     // read pipe to make sure the size of memory to create
-    // pipe is blocked, just  
+    // pipe is blocked, just
     memset(buf, 0x0, BUF_LEN);
     i = 0;
-    do 
+    do
     {
         ret = read ( pipefd[READ_SIDE], &buf[i], 1 );
         if( 0 > ret )
         {
             DEBUG_OUTPUT("[Parent] : error when read, err = %d\n", errno);
             w = wait(&status);
-            if (w == -1) 
+            if (w == -1)
             {
                 DEBUG_OUTPUT( "no more child process \n");
                 break;
@@ -323,19 +337,19 @@ DEBUG_OUTPUT("[Parent] : close write pipe \n");
         }
         else
         {
-            len += ret ; 
+            len += ret ;
             if(0 == strncmp(END_SYMBOL, &buf[i], 1))
             {
                 break;
             }
             i++;
         }
-    }while ((EBADF != errno )); 
+    }while ((EBADF != errno ));
     DEBUG_OUTPUT("[Parent] : read %d bytes = %s\n", len, buf);
 
     ret = 0;
 
-    // rows 
+    // rows
     ptr = strtok_r(buf, (const char *)delim, &saveptr);
     if(NULL != ptr)
     {
@@ -371,35 +385,35 @@ DEBUG_OUTPUT("[Parent] :  size = %d\n", size);
     if(0 == ret)
     {
         // create string array according return value , each string  has CMD_LEN bytes;
-        // data structure 
+        // data structure
         // [date] [stockNum] [tradeNum] [volume] [open] [high] [low] [close] [sign] [diff] [buy] [buyVol] [sell] [sellVol] [epr]
-        pDailyData = getMemSpace(rows * cols, size);
-        if(NULL != pDailyData)
+        pCurr = getMemSpace(rows * cols, size);
+        if(NULL != pCurr)
         {
             for(i = 0 ; i < rows; i++)
             {
                 for(j = 0 ; j < cols; j++)
                 {
                     // read length = (string) + (,)
-                    memset(buf, 0x0, sizeof(buf));
+                    memset(buf, 0x0, BUF_LEN);
                     k = 0;
                     do
                     {
                         len += ret = read ( pipefd[READ_SIDE], &buf[k], 1 );
                         if(ret >  0 && ',' == buf[k])
                         {
-                            strncpy( (char *)pDailyData+(i*cols)+j, (const char*)buf, k);
-                            //*( pDailyData+(i*cols)+j) = '\0';
-fprintf( stderr, "[%d][%d] %s\t", i, j, (char *)pDailyData+(i*cols)+j);
+                            strncpy( (char *)(pCurr+(i*cols*size)+j*size), (const char*)buf, k);
+                            //*( pCurr+(i*cols)+j) = '\0';
+fprintf( stderr, "[%d][%d] %s\t", i, j, (char *)(pCurr+(i*cols*size)+j*size));
                             k = 0;
                             break;
-                        } //if 
+                        } //if
                         k++;
                         if(k >= BUF_LEN)
                         {
                             DEBUG_OUTPUT( "[parent] : buf overflow !!!! \n");
                             i = rows+1;
-                            j = cols+1; 
+                            j = cols+1;
                             ret = -1;
                         }
                     } while(k < BUF_LEN);
@@ -411,13 +425,13 @@ fprintf( stderr, "\n");
             DEBUG_OUTPUT( "[parent] : total=%d \n", len);
         }
     }
-    else 
+    else
     {
         DEBUG_OUTPUT( "[parent] : Header error, stop to receive from child \n");
     }
 
 #if 1
-    // 
+    //
     do
     {
         status = 0;
@@ -426,7 +440,7 @@ DEBUG_OUTPUT( "[parent] : w= it\n");
         w = wait(&status);
 
 DEBUG_OUTPUT( "[parent] : w=%d \n", w);
-        if (w == -1) 
+        if (w == -1)
         {
             DEBUG_OUTPUT( "no more child process \n");
             break;
@@ -438,7 +452,7 @@ DEBUG_OUTPUT( "[parent] : w=%d \n", w);
         }
 DEBUG_OUTPUT( "[parent] : total=%d \n", len);
 
-        if (WIFEXITED(status)) 
+        if (WIFEXITED(status))
         {
             DEBUG_OUTPUT("[parent] : exited, status=%d\n", WEXITSTATUS(status));
 
@@ -453,13 +467,98 @@ DEBUG_OUTPUT( "[parent] : next time \n");
 #endif
     } while (1);
 
-    // close pipe 
+    // close pipe
     close(pipefd[READ_SIDE]);
-DEBUG_OUTPUT( "[parent] : close pipe ret = %d\n", ret);
+DEBUG_OUTPUT( "[parent] : close pipe ret = %d, rows = %d\n", ret, rows);
+DEBUG_OUTPUT( "[parent] : pCurr = %p \n", pCurr);
+DEBUG_OUTPUT( "[parent] : pdailyDat = %p \n", *dailyData);
+    *dailyData =  pCurr ;
+DEBUG_OUTPUT( "[parent] : pdailyDat = %p \n", *dailyData);
+
     if(ret >= 0)
-        return 1;
+        return (rows);
     else
         return 0;
+}
+
+// create memory space to store data after convtered
+//  line data sequence: date      stockNum        tradeNum        volume      open        high        low     close       sign        diff        buy     buyVol      sell        sellVol     epr
+struct stock_daily** convType(char **pStrData, unsigned int size)
+{
+    struct stock_daily* pResult = NULL;
+    char *pDay =NULL;
+#if !DBG
+    struct stock_daily* pMem = NULL;
+#else
+    struct stock_daily pMem[BUF_LEN];
+#endif
+    int i = 0 ;
+    int rows = 0;
+    if(NULL == pStrData || NULL==*pStrData)
+    {
+        DEBUG_OUTPUT( "NULL data\n");
+        return NULL;
+    }
+    if(1 > size)
+    {
+        DEBUG_OUTPUT( "no data to create\n");
+        return NULL;
+    }
+
+#if !DBG
+    pMem = (struct stock_daily**)malloc(sizeof(struct stock_daily)*size);
+DEBUG_OUTPUT("create memory\n" );
+#endif
+    if(pMem)
+    {
+        for(i = 0; i < size; i++)
+        {
+            pResult = (pMem+i);
+            pDay = (char *)(pStrData)+i;
+
+strncpy( (char *)(pCurr+(i*cols*size)+j*size), (const char*)buf, k);
+
+DEBUG_OUTPUT("-------------------------------------------\n" );
+DEBUG_OUTPUT("%d rows = %s \n", i , pDay);
+DEBUG_OUTPUT("%d rows =%s\n", i , (char*)(pStrData+i*STOCK_ELE+0));
+DEBUG_OUTPUT("%d rows \n", i);
+            (pResult)->date = strtoul((const char*)(pStrData+i*STOCK_ELE+0), NULL, 10);
+DEBUG_OUTPUT("%lu\n",(pResult)->date );
+            (pResult)->stockNum= strtoul((const char*)(pStrData+1), NULL, 10);
+DEBUG_OUTPUT("%lu\n",(pResult)->stockNum);
+            (pResult)->tradeNum= strtoul((const char*)(pStrData+2), NULL, 10) ;
+DEBUG_OUTPUT("%lu\n",(pResult)->tradeNum);
+            (pResult)->volume=  strtoul((const char*)(pStrData+3), NULL, 10);
+DEBUG_OUTPUT("%lu\n",(pResult)->volume);
+            (pResult)->open=  strtof((const char*)(pStrData+4), NULL);
+DEBUG_OUTPUT("%f\n",(pResult)->open);
+            (pResult)->high=  strtof((const char*)(pStrData+5), NULL);
+DEBUG_OUTPUT("%f\n",(pResult)->high);
+            (pResult)->low=  strtof((const char*)(pStrData+6), NULL);
+DEBUG_OUTPUT("%f\n",(pResult)->low);
+            (pResult)->close=  strtof((const char*)(pStrData+7), NULL);
+DEBUG_OUTPUT("%f\n",(pResult)->close);
+            (pResult)->sign=  *(char *)(pStrData+8);
+DEBUG_OUTPUT("%c\n",(pResult)->sign);
+            (pResult)->diff= strtof((const char*)(pStrData+9), NULL);
+DEBUG_OUTPUT("%f\n",(pResult)->diff);
+            (pResult)->buy=  strtof((const char*)(pStrData+10), NULL);
+DEBUG_OUTPUT("%f\n",(pResult)->buy);
+            (pResult)->buyVol=  strtoul((const char*)(pStrData+11), NULL, 10) ;
+DEBUG_OUTPUT("%lu\n",(pResult)->buyVol);
+            (pResult)->sell=  strtof((const char*)(pStrData+12), NULL);
+DEBUG_OUTPUT("%f\n",(pResult)->sell);
+            (pResult)->sellVol=  strtoul((const char*)(pStrData+13), NULL, 10) ;
+DEBUG_OUTPUT("%lu\n",(pResult)->sellVol);
+            (pResult)->epr=  strtof((const char*)(pStrData+14), NULL);
+DEBUG_OUTPUT("%f\n",(pResult)->epr);
+        }
+    }
+    else
+    {
+        DEBUG_OUTPUT( "Memory create failed\n");
+        return NULL;
+    }
 }
 
 void initialize()
@@ -477,31 +576,31 @@ int main(int argc, char **argv)
     char pathDynamicLib[FILENAME_LEN];
     char *ptr = NULL;
     char opt = '\0';
-    unsigned int x, y, z; 
+    unsigned int x, y, z;
     char buf[BUF_LEN];
-    unsigned char c = 0x0; 
-    char **pstockData = NULL;
+    unsigned char c = 0x0;
     int i = 0;
     int day = 0;
+    int ret = 0;
 
 
     initialize();
     memset(pathDynamicLib, 0x0, FILENAME_LEN);
-    memset(outputFile, 0x0, PATH_LEN);
-    memset(inputFile, 0x0, PATH_LEN);
+    memset(outputFile, 0x0, FILENAME_LEN);
+    memset(inputFile, 0x0, FILENAME_LEN);
     memset(folderPath, 0x0, PATH_LEN);
-    if ( ARGU_NUM > argc ) 
+    if ( ARGU_NUM > argc )
     {
         DEBUG_OUTPUT( "Too few arguments\n");
         usage(argv[0]);
         exit(0);
     }
 
-    // count nessary argument 
+    // count nessary argument
     i = 0;
-    while ((opt = getopt(argc, argv, "d:f:i:o:n:x:y:z:")) != -1) 
+    while ((opt = getopt(argc, argv, "d:f:i:o:n:x:y:z:")) != -1)
     {
-        switch (opt) 
+        switch (opt)
         {
             case 'd':
             {
@@ -530,11 +629,10 @@ int main(int argc, char **argv)
                 break;
             }
             case 'i':
-            { 
+            {
                 strcpy(pathDynamicLib, optarg);
                 DEBUG_OUTPUT( "shared library :%s\n", pathDynamicLib);
-DEBUG_OUTPUT( "%p\n", pathDynamicLib);
-                // check indicator library 
+                // check indicator library
                 if(!0 == stat( pathDynamicLib, &st))
                 {
                     DEBUG_OUTPUT("Dynamic library doesn't exist\n");
@@ -597,42 +695,45 @@ DEBUG_OUTPUT("Open shared library : %s\n", pathDynamicLib);
 #endif
         memset(linebuf, 0x0, CMD_LEN);
         // specified stock
-DEBUG_OUTPUT("Open shared library : %s\n", pathDynamicLib);
         while( NULL != (ptr = fgets(linebuf, CMD_LEN, inputFp)))
         {
-DEBUG_OUTPUT("Open shared library : %s\n", pathDynamicLib);
-            // cat database name 
+            // cat database name
             memset(buf, 0x0, BUF_LEN);
-DEBUG_OUTPUT("Open shared library : %s\n", pathDynamicLib);
 
             for(i = 0 ; i< strlen(linebuf); i++)
             {
                 if( !isalnum( linebuf[i]) )
                     break;
             }
-DEBUG_OUTPUT("Open shared library : %s\n", pathDynamicLib);
-            // add postfix ".sl3" 
+            // add postfix ".sl3"
             linebuf[i] = '.';
             linebuf[i+1] = 's';
             linebuf[i+2] = 'l';
             linebuf[i+3] = '3';
             linebuf[i+4] = '\0';
 
-DEBUG_OUTPUT("Open shared library : %s\n", pathDynamicLib);
             sprintf( buf,"%s/%s", folderPath, linebuf );
 
-DEBUG_OUTPUT("Open shared library : %s\n", pathDynamicLib);
-            // open specified stock's db 
-            if(get_stock_daily_data(buf, pstockData))
+            // open specified stock's db
+            if((ret = get_stock_daily_data(buf, &pStorckStrData) )> 0)
             {
-DEBUG_OUTPUT("Open shared library : %s\n", pathDynamicLib);
-                // open indicator
-                if(0 < open_shared_lib( pathDynamicLib))
+DEBUG_OUTPUT("total %d rows data \n", ret);
+DEBUG_OUTPUT( "conv addr *p %p\n", *pStorckStrData);
+DEBUG_OUTPUT( "conv addr %p\n", pStorckStrData);
+DEBUG_OUTPUT( "conv addr &p %p\n", &pStorckStrData);
+                pStockDigitData = convType(pStorckStrData, ret);
+                if(NULL != pStockDigitData)
                 {
-DEBUG_OUTPUT("Calculate\n");
-                    // call the indicator, indicator() 
-                    // pass stock data, day parameter, output file name
-                    // indicator(pstockData, day, outputFile);
+
+
+                    // open indicator
+                    if(0 < open_shared_lib( pathDynamicLib))
+                    {
+    DEBUG_OUTPUT("Calculate\n");
+                        // call the indicator, indicator()
+                        // pass stock data, day parameter, output file name
+                        // indicator(pstockData, day, outputFile);
+                    }
                 }
             }
         }
