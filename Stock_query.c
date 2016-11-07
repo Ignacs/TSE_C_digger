@@ -188,20 +188,20 @@ static void signal_handler(int signo)
 
 // return 1 : (rows-1)  // decrease the row of title
 // return 0 : fail to get dbata
-int get_stock_daily_data(char *dbName, char ***dailyData)
+int get_stock_daily_data(char *dbName, char ***dailyData, int *pRows , int *pCols , int *pSize )
 {
     char *delim = ",";
     pid_t pid,w;
     // int cntFork = 0;
     int status = 0;
     int ret = 0;
-    int rows = 0, cols = 0, size = 0;
     char *errMsg = NULL;
     int i = 0, j = 0, k = 0;
     char buf[BUF_LEN] ;
     char *ptr=NULL, *saveptr;
     int len = 0;
     char **pCurr = NULL;
+    int rows = 0, cols = 0, size = 0;
 
     // create pipe
     if(0 > (ret = pipe (pipefd)))
@@ -243,7 +243,7 @@ fprintf(stderr, "rows = %d\tcols =%d\n", rows, cols);
                     for(j = 0 ; j< cols; j++)
                     {
                         if(size < strlen(ptable[i*cols+j]))
-                            size = strlen(ptable[i*cols+j]) + 1;
+                            size = strlen(ptable[i*cols+j]) + 1; // 1 for '\0'
                     }
                 }
 
@@ -469,21 +469,25 @@ DEBUG_OUTPUT( "[parent] : next time \n");
 
     // close pipe
     close(pipefd[READ_SIDE]);
-DEBUG_OUTPUT( "[parent] : close pipe ret = %d, rows = %d\n", ret, rows);
-DEBUG_OUTPUT( "[parent] : pCurr = %p \n", pCurr);
+
+    *pRows = rows ;
+    *pCols = cols ;
+    *pSize = size ;
+DEBUG_OUTPUT( "[parent] : close pipe pRows = %d, pCols = %d, pSize = %d\n",* pRows, *pCols, *pSize);
 DEBUG_OUTPUT( "[parent] : pdailyDat = %p \n", *dailyData);
     *dailyData =  pCurr ;
 DEBUG_OUTPUT( "[parent] : pdailyDat = %p \n", *dailyData);
 
-    if(ret >= 0)
-        return (rows);
+
+    if(ret >= 1)
+        return 1;
     else
         return 0;
 }
 
 // create memory space to store data after convtered
 //  line data sequence: date      stockNum        tradeNum        volume      open        high        low     close       sign        diff        buy     buyVol      sell        sellVol     epr
-struct stock_daily** convType(char **pStrData, unsigned int size)
+struct stock_daily** convType(char **pStrData, unsigned int rows,unsigned int cols, unsigned int size)
 {
     struct stock_daily* pResult = NULL;
     char *pDay =NULL;
@@ -492,8 +496,7 @@ struct stock_daily** convType(char **pStrData, unsigned int size)
 #else
     struct stock_daily pMem[BUF_LEN];
 #endif
-    int i = 0 ;
-    int rows = 0;
+    int i = 0 , j = 0;
     if(NULL == pStrData || NULL==*pStrData)
     {
         DEBUG_OUTPUT( "NULL data\n");
@@ -509,48 +512,62 @@ struct stock_daily** convType(char **pStrData, unsigned int size)
     pMem = (struct stock_daily**)malloc(sizeof(struct stock_daily)*size);
 DEBUG_OUTPUT("create memory\n" );
 #endif
+
+/*
+for(i = 0 ; i < cols*size; i++)
+{
+pDay = (char *)(pStrData);
+    fprintf(stderr, "[%s]",  pDay);
+pDay = (char *)(pStrData+size);
+    fprintf(stderr, "[%s]",  pDay);
+}
+fprintf(stderr, "\n");
+*/
+
     if(pMem)
     {
-        for(i = 0; i < size; i++)
+        for(i = 0; i < rows; i++)
         {
+
             pResult = (pMem+i);
-            pDay = (char *)(pStrData)+i;
-
-strncpy( (char *)(pCurr+(i*cols*size)+j*size), (const char*)buf, k);
-
+            pDay = (char*)(pStrData+(i*cols*size));
+//                            strncpy( (char *)(pCurr+(i*cols*size)+j*size), (const char*)buf, k);
 DEBUG_OUTPUT("-------------------------------------------\n" );
-DEBUG_OUTPUT("%d rows = %s \n", i , pDay);
-DEBUG_OUTPUT("%d rows =%s\n", i , (char*)(pStrData+i*STOCK_ELE+0));
-DEBUG_OUTPUT("%d rows \n", i);
-            (pResult)->date = strtoul((const char*)(pStrData+i*STOCK_ELE+0), NULL, 10);
+//DEBUG_OUTPUT("%d rows = %s \n", i , pDay);
+            DEBUG_OUTPUT("%d rows =%s\n", i , (char *)(pStrData+(i*cols*size)));
+            (pResult)->date = strtoul((char *)(pStrData+(i*cols*size)), NULL, 10);
 DEBUG_OUTPUT("%lu\n",(pResult)->date );
-            (pResult)->stockNum= strtoul((const char*)(pStrData+1), NULL, 10);
+
+            (pResult)->stockNum= strtoul((const char*)(pStrData+size+(i*cols*size)), NULL, 10);
 DEBUG_OUTPUT("%lu\n",(pResult)->stockNum);
-            (pResult)->tradeNum= strtoul((const char*)(pStrData+2), NULL, 10) ;
+
+            (pResult)->tradeNum= strtoul((const char*)(pStrData+(2*size)+(i*cols*size)), NULL, 10) ;
 DEBUG_OUTPUT("%lu\n",(pResult)->tradeNum);
-            (pResult)->volume=  strtoul((const char*)(pStrData+3), NULL, 10);
+
+            (pResult)->volume=  strtoul((char *)(pStrData+(3*size)+(i*cols*size)), NULL, 10);
 DEBUG_OUTPUT("%lu\n",(pResult)->volume);
-            (pResult)->open=  strtof((const char*)(pStrData+4), NULL);
+
+            (pResult)->open=  strtof((const char*)(pStrData+(4*size)+(i*cols*size)), NULL);
 DEBUG_OUTPUT("%f\n",(pResult)->open);
-            (pResult)->high=  strtof((const char*)(pStrData+5), NULL);
-DEBUG_OUTPUT("%f\n",(pResult)->high);
-            (pResult)->low=  strtof((const char*)(pStrData+6), NULL);
+            (pResult)->high=  strtof((const char*)(pStrData+(5*size)+(i*cols*size)), NULL);
+DEBUG_OUTPUT("%f\n",(pResult)->high*100/100.0);
+            (pResult)->low=  strtof((const char*)(pStrData+(6*size)+(i*cols*size)), NULL);
 DEBUG_OUTPUT("%f\n",(pResult)->low);
-            (pResult)->close=  strtof((const char*)(pStrData+7), NULL);
+            (pResult)->close=  strtof((const char*)(pStrData+(7*size)+(i*cols*size)), NULL);
 DEBUG_OUTPUT("%f\n",(pResult)->close);
-            (pResult)->sign=  *(char *)(pStrData+8);
+            (pResult)->sign=  *(char *)(pStrData+(8*size)+(i*cols*size));
 DEBUG_OUTPUT("%c\n",(pResult)->sign);
-            (pResult)->diff= strtof((const char*)(pStrData+9), NULL);
+            (pResult)->diff= strtof((const char*)(pStrData+(9*size)+(i*cols*size)), NULL);
 DEBUG_OUTPUT("%f\n",(pResult)->diff);
-            (pResult)->buy=  strtof((const char*)(pStrData+10), NULL);
+            (pResult)->buy=  strtof((const char*)(pStrData+(10*size)+(i*cols*size)), NULL);
 DEBUG_OUTPUT("%f\n",(pResult)->buy);
-            (pResult)->buyVol=  strtoul((const char*)(pStrData+11), NULL, 10) ;
+            (pResult)->buyVol=  strtoul((const char*)(pStrData+(11*size)+(i*cols*size)), NULL, 10) ;
 DEBUG_OUTPUT("%lu\n",(pResult)->buyVol);
-            (pResult)->sell=  strtof((const char*)(pStrData+12), NULL);
+            (pResult)->sell=  strtof((const char*)(pStrData+(12*size)+(i*cols*size)), NULL);
 DEBUG_OUTPUT("%f\n",(pResult)->sell);
-            (pResult)->sellVol=  strtoul((const char*)(pStrData+13), NULL, 10) ;
+            (pResult)->sellVol=  strtoul((const char*)(pStrData+(13*size)+(i*cols*size)), NULL, 10) ;
 DEBUG_OUTPUT("%lu\n",(pResult)->sellVol);
-            (pResult)->epr=  strtof((const char*)(pStrData+14), NULL);
+            (pResult)->epr=  strtof((const char*)(pStrData+(14*size)+(i*cols*size)), NULL);
 DEBUG_OUTPUT("%f\n",(pResult)->epr);
         }
     }
@@ -582,6 +599,7 @@ int main(int argc, char **argv)
     int i = 0;
     int day = 0;
     int ret = 0;
+    unsigned int rows=0, cols=0, size=0;
 
 
     initialize();
@@ -715,13 +733,13 @@ DEBUG_OUTPUT("Open shared library : %s\n", pathDynamicLib);
             sprintf( buf,"%s/%s", folderPath, linebuf );
 
             // open specified stock's db
-            if((ret = get_stock_daily_data(buf, &pStorckStrData) )> 0)
+            if((ret = get_stock_daily_data(buf, &pStorckStrData, &rows, &cols, &size) )> 0)
             {
-DEBUG_OUTPUT("total %d rows data \n", ret);
+DEBUG_OUTPUT("total %d rows \n", rows);
 DEBUG_OUTPUT( "conv addr *p %p\n", *pStorckStrData);
 DEBUG_OUTPUT( "conv addr %p\n", pStorckStrData);
 DEBUG_OUTPUT( "conv addr &p %p\n", &pStorckStrData);
-                pStockDigitData = convType(pStorckStrData, ret);
+                pStockDigitData = convType(pStorckStrData, rows, cols, size);
                 if(NULL != pStockDigitData)
                 {
 
