@@ -21,7 +21,8 @@
 #define READ_SIDE 0
 
 #define INDICATOR       "indicator"
-#define CMD_QUERY_STOCK     "SELECT * FROM DailyData ORDER by date;"
+// EX: select * from DailyData order by date desc limit 12
+#define CMD_QUERY_STOCK     "SELECT * FROM DailyData ORDER by date desc limit "
 // #define CMD_QUERY_STOCK     "SELECT * FROM sqlite_master;"
 #define END_SYMBOL "<"
 
@@ -199,6 +200,12 @@ int get_stock_daily_data(char *dbName, char ***dailyData, int *pRows , int *pCol
     char **pCurr = NULL;
     int rows = 0, cols = 0, size = 0;
 
+    if(*pRows < 0)
+    {
+        DEBUG_OUTPUT( "Arugment error \n");
+        return -1;
+    }
+
     // create pipe
     if(0 > (ret = pipe (pipefd)))
     {
@@ -227,7 +234,12 @@ DEBUG_OUTPUT( " open database : %s \n", dbName);
         if( SQLITE_OK == ret || SQLITE_ROW == ret || SQLITE_DONE == ret )
         {
 DEBUG_OUTPUT( "get data=> %s\n", dbName);
-            ret = sqlite3_get_table(db , CMD_QUERY_STOCK, &ptable, &rows, &cols, &errMsg);
+            memset(buf, 0x0, BUF_LEN);
+
+            // limit output in (*pRows x 2)
+            sprintf(buf, "%s %d;", CMD_QUERY_STOCK, (unsigned )(*pRows * 2));
+DEBUG_OUTPUT( "Input cmd: %s\n", buf);
+            ret = sqlite3_get_table(db , buf, &ptable, &rows, &cols, &errMsg);
             if( SQLITE_OK == ret || SQLITE_ROW == ret || SQLITE_DONE == ret )
             {
 fprintf(stderr, "rows = %d\tcols =%d\n", rows, cols);
@@ -735,6 +747,8 @@ DEBUG_OUTPUT( "output file :%s\n", outputFile);
             sprintf( buf,"%s/%s", folderPath, linebuf );
 
             // open specified stock's db
+            // limit database output be (day*2) days.
+            rows = day;
             if((ret = get_stock_daily_data(buf, &pStorckStrData, &rows, &cols, &size) )> 0)
             {
 DEBUG_OUTPUT("total %d rows , %d cols , size %d\n", rows, cols, size);
@@ -748,7 +762,7 @@ DEBUG_OUTPUT("total %d rows , %d cols , size %d\n", rows, cols, size);
     DEBUG_OUTPUT("open %f\n", pStockDigitData->open);
                         // call the indicator, indicator()
                         // pass stock data, day parameter, output file name
-                        indicator(&pStockDigitData, rows, days1, day, outputFile);
+                        indicator(&pStockDigitData, rows, day, days1, outputFile);
                     }
                 }
             }
