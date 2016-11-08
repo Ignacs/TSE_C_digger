@@ -59,12 +59,23 @@ typedef enum{
     LC_SET_FAIL,
     DATA_FORMAT_ERROR,
     STRING_NULL,
+    WORK_FLOW,
+    ARGU_NOT_MATCH,
+    PIPE_CREATE_ERROR,
+    FORK_ERROR,
 }errList;
 
 void output_err(unsigned int err)
 {
     switch(err)
     {
+        case FORK_ERROR    :
+            DEBUG_OUTPUT("Fork error \n");
+            break;
+
+        case PIPE_CREATE_ERROR:
+            DEBUG_OUTPUT("Pipe error : Arguemnt not enough\n");
+            break;
         case ARG_NOT_ENOUGH:
             DEBUG_OUTPUT("Argument error : Arguemnt not enough\n");
             break;
@@ -89,6 +100,9 @@ void output_err(unsigned int err)
         case ARGU_NOT_SUPPORT:
             DEBUG_OUTPUT("Argument error : Specified stock not support now\n");
             break;
+        case ARGU_NOT_MATCH:
+            DEBUG_OUTPUT("Argument error : assert argument\n");
+            break;
         case DB_NOT_FOUND:
             DEBUG_OUTPUT("Database error : Database not found\n");
             break;
@@ -104,16 +118,17 @@ void output_err(unsigned int err)
         case DB_QUERY_FAIL:
             DEBUG_OUTPUT("Database error : Database table query fail\n");
             break;
-
         case LC_SET_FAIL:
             DEBUG_OUTPUT("Locale error : Set locale failed \n");
             break;
-
         case DATA_FORMAT_ERROR:
             DEBUG_OUTPUT("Parse error : Error data format \n");
             break;
         case STRING_NULL:
-            DEBUG_OUTPUT("Parse error : \n");
+            DEBUG_OUTPUT("Parse error : string is null\n");
+            break;
+        case WORK_FLOW:
+            DEBUG_OUTPUT("work flow handle error : Can't go ahead\n");
             break;
         default:
             DEBUG_OUTPUT("General error : %d\n", err);
