@@ -1,10 +1,14 @@
 
 #include <errno.h>
+#include <string.h>
+#include <wchar.h>
 #include <sqlite3.h>
 
-#define BUFF_LEN 4096
+#define BUFF_LEN        4096
+#define LEN_DAYS_ORD    256
 
-#define FILE_TRADING_DAY    "TradingDay" 
+
+#define FILE_TRADING_DAY    "TradingDay"
 #define FILE_HOLIDAY        "Holiday"
 #define TSE_DATE_CLASSIFIC  "TSE.db3"
 
@@ -14,7 +18,29 @@
             }while(0)
 
 #define READONLY    SQLITE_OPEN_READONLY
-#define READWRITE   SQLITE_OPEN_READWRITE 
+#define READWRITE   SQLITE_OPEN_READWRITE
+
+#define SIGN_UP     '+'
+#define SIGN_DOWN   '-'
+
+typedef struct stock_daily {
+//  line data sequence: date      stockNum        tradeNum        volume      open        high        low     close       sign        diff        buy     buyVol      sell        sellVol     epr
+    unsigned long int date;
+    unsigned long int stockNum;
+    unsigned long int tradeNum;
+    unsigned long int volume;
+    double open;
+    double high;
+    double low;
+    double close;
+    char sign;
+    double diff;
+    double buy;
+    unsigned long int buyVol;
+    double sell;
+    unsigned long int sellVol;
+    double epr;
+}*pStockHistory;
 
 typedef enum{
     ARG_NOT_ENOUGH,
@@ -39,10 +65,10 @@ void output_err(unsigned int err)
 {
     switch(err)
     {
-        case ARG_NOT_ENOUGH: 
+        case ARG_NOT_ENOUGH:
             DEBUG_OUTPUT("Argument error : Arguemnt not enough\n");
             break;
-        case ARG_NOT_MATCH: 
+        case ARG_NOT_MATCH:
             DEBUG_OUTPUT("Argument error : Arguemnt not match \n" );
             break;
         case FOLDER_NOT_MOUNT:
@@ -95,6 +121,25 @@ void output_err(unsigned int err)
     }
 }
 
+
+int checkFileAbs( char *src, char *dest, unsigned int lenDest)
+{
+    if( 0 > lenDest )
+        return -1;
+    if( NULL == src)
+        return -1;
+    if( NULL == dest )
+        return -1;
+
+    if('/'!= *(src) && '~' != *(src))
+    {
+        memset(dest, 0x0, lenDest);
+        sprintf(dest , "./%s", src);
+    }
+    else
+        sprintf(dest , "%s", src);
+}
+
 unsigned int wcsConvToU_10b(wchar_t *wcs)
 {
     wchar_t *ptr = NULL ;
@@ -140,7 +185,7 @@ unsigned int wcsConvToU_10b(wchar_t *wcs)
             case L'9':
                 buf[i] = '9';
                 break;
-            default : 
+            default :
                 return strtol( buf, NULL, 10);
                 break;
         }
@@ -163,13 +208,13 @@ static int openDB(char *pathDB, int rw, sqlite3 **db)
 #if 0
     DEBUG_OUTPUT("db pointer address = %p\n", &db );
     DEBUG_OUTPUT("db address = %p\n", db );
-#endif 
+#endif
     if(READONLY == rw)
         ret = sqlite3_open_v2(pathDB, db, SQLITE_OPEN_READONLY, NULL);
-    else 
+    else
         ret = sqlite3_open_v2(pathDB, db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL);
     // increasing counter.
-    if( SQLITE_OK == ret || SQLITE_ROW == ret || SQLITE_DONE == ret ) 
+    if( SQLITE_OK == ret || SQLITE_ROW == ret || SQLITE_DONE == ret )
     {
         // countDBOpen ++;
         DEBUG_OUTPUT("open data successfull\n");

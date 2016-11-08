@@ -44,7 +44,7 @@ static sqlite3 *db = NULL;
 FILE    *inputFp = NULL;
 unsigned int memCount = 0;
 int pipefd[2] ;
-struct stock_daily **pStockDigitData = NULL;
+struct stock_daily *pStockDigitData = NULL;
 
 
 void finalize(const char *func, int line)
@@ -102,13 +102,9 @@ int open_shared_lib(char *libPath)
     char buf[BUF_LEN];
     DEBUG_OUTPUT( "Open shared library :%s\n", libPath);
 
-    // check path is absolute.
-    if('/'!= *(libPath) && '~' != *(libPath))
-    {
-        memset(buf, 0x0, BUF_LEN);
-        sprintf(buf , "./%s", libPath);
+    // check path if absolute.
+    checkFileAbs(libPath, (char *)buf, BUF_LEN);
 DEBUG_OUTPUT( "Open shared library :%s\n", buf);
-    }
 
     fHandle = dlopen((const char*)buf, RTLD_LAZY);
     //fHandle = dlopen("./libVR.so", RTLD_LAZY);
@@ -487,7 +483,7 @@ DEBUG_OUTPUT( "[parent] : pdailyDat = %p \n", *dailyData);
 
 // create memory space to store data after convtered
 //  line data sequence: date      stockNum        tradeNum        volume      open        high        low     close       sign        diff        buy     buyVol      sell        sellVol     epr
-struct stock_daily** convType(char **pStrData, unsigned int rows,unsigned int cols, unsigned int size)
+int convType(char **pStrData, unsigned int rows,unsigned int cols, unsigned int size, struct stock_daily** pRet)
 {
     struct stock_daily* pResult = NULL;
     char *pDay =NULL;
@@ -500,16 +496,16 @@ struct stock_daily** convType(char **pStrData, unsigned int rows,unsigned int co
     if(NULL == pStrData || NULL==*pStrData)
     {
         DEBUG_OUTPUT( "NULL data\n");
-        return NULL;
+        return -1;
     }
     if(1 > size)
     {
         DEBUG_OUTPUT( "no data to create\n");
-        return NULL;
+        return -1;
     }
 
 #if !DBG
-    pMem = (struct stock_daily**)malloc(sizeof(struct stock_daily)*size);
+    pMem = (struct stock_daily*)malloc(sizeof(struct stock_daily)*size);
 DEBUG_OUTPUT("create memory\n" );
 #endif
 
@@ -536,7 +532,7 @@ DEBUG_OUTPUT("-------------------------------------------\n" );
 //DEBUG_OUTPUT("%d rows = %s \n", i , pDay);
             DEBUG_OUTPUT("%d rows =%s\n", i , (char *)(pStrData+(i*cols*size)));
             (pResult)->date = strtoul((char *)(pStrData+(i*cols*size)), NULL, 10);
-DEBUG_OUTPUT("%lu\n",(pResult)->date );
+DEBUG_OUTPUT("%p %lu\n", pResult ,(pResult)->date );
 
             (pResult)->stockNum= strtoul((const char*)(pStrData+size+(i*cols*size)), NULL, 10);
 DEBUG_OUTPUT("%lu\n",(pResult)->stockNum);
@@ -574,8 +570,10 @@ DEBUG_OUTPUT("%f\n",(pResult)->epr);
     else
     {
         DEBUG_OUTPUT( "Memory create failed\n");
-        return NULL;
+        return -1;
     }
+    *pRet = (struct stock_daily*)&pMem;
+    return 0;
 }
 
 void initialize()
@@ -593,7 +591,7 @@ int main(int argc, char **argv)
     char pathDynamicLib[FILENAME_LEN];
     char *ptr = NULL;
     char opt = '\0';
-    unsigned int x, y, z;
+    unsigned int days1, days2, days3;
     char buf[BUF_LEN];
     unsigned char c = 0x0;
     int i = 0;
@@ -679,31 +677,35 @@ int main(int argc, char **argv)
                 break;
             }
             case 'x':
-                x = atoi( optarg);
+                days1 = atoi( optarg);
+                DEBUG_OUTPUT( "days1 :%d\n", days1);
                 break;
             case 'y':
-                y = atoi( optarg);
+                days2 = atoi( optarg);
+                DEBUG_OUTPUT( "days2 :%d\n", days2);
                 break;
             case 'z':
-                z = atoi( optarg);
+                days2 = atoi( optarg);
+                DEBUG_OUTPUT( "days2 :%d\n", days2);
                 break;
             default: /* '?' */
                 usage(argv[0]);
                 exit(EXIT_FAILURE);
         }
     }
+    /*
 DEBUG_OUTPUT( "folder :%s\n", folderPath);
 DEBUG_OUTPUT( "shared library :%s\n", pathDynamicLib);
 DEBUG_OUTPUT( "%p\n", pathDynamicLib);
 DEBUG_OUTPUT( "day :%d\n", day);
 DEBUG_OUTPUT( "input file :%s\n", inputFile);
 DEBUG_OUTPUT( "output file :%s\n", outputFile);
+*/
     if( NECESSARY_ARGC > i)
     {
         DEBUG_OUTPUT("Necessary arguments is not enought > -f, -d, -i, -o and -n\n");
         exit(EXIT_FAILURE);
     }
-DEBUG_OUTPUT("Open shared library : %s\n", pathDynamicLib);
 
     inputFp = fopen( inputFile, "r" );
     if( NULL != inputFp )
@@ -735,22 +737,18 @@ DEBUG_OUTPUT("Open shared library : %s\n", pathDynamicLib);
             // open specified stock's db
             if((ret = get_stock_daily_data(buf, &pStorckStrData, &rows, &cols, &size) )> 0)
             {
-DEBUG_OUTPUT("total %d rows \n", rows);
-DEBUG_OUTPUT( "conv addr *p %p\n", *pStorckStrData);
-DEBUG_OUTPUT( "conv addr %p\n", pStorckStrData);
-DEBUG_OUTPUT( "conv addr &p %p\n", &pStorckStrData);
-                pStockDigitData = convType(pStorckStrData, rows, cols, size);
+DEBUG_OUTPUT("total %d rows , %d cols , size %d\n", rows, cols, size);
+                convType(pStorckStrData, rows, cols, size, &pStockDigitData );
                 if(NULL != pStockDigitData)
                 {
-
-
                     // open indicator
-                    if(0 < open_shared_lib( pathDynamicLib))
+                    if(0 < open_shared_lib( pathDynamicLib ))
                     {
-    DEBUG_OUTPUT("Calculate\n");
+    DEBUG_OUTPUT("pass pStockDigitData %p\n", pStockDigitData);
+    DEBUG_OUTPUT("open %f\n", pStockDigitData->open);
                         // call the indicator, indicator()
                         // pass stock data, day parameter, output file name
-                        // indicator(pstockData, day, outputFile);
+                        indicator(&pStockDigitData, rows, days1, day, outputFile);
                     }
                 }
             }
