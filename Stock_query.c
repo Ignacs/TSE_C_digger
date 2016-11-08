@@ -200,19 +200,24 @@ int get_stock_daily_data(char *dbName, char ***dailyData, int *pRows , int *pCol
     char **pCurr = NULL;
     int rows = 0, cols = 0, size = 0;
 
+DEBUG_OUTPUT(" \n ");
     if(*pRows < 0)
     {
+        output_err(ARGU_NOT_MATCH);
         DEBUG_OUTPUT( "Arugment error \n");
         return -1;
     }
 
+DEBUG_OUTPUT(" \n ");
     // create pipe
     if(0 > (ret = pipe (pipefd)))
     {
+        output_err(PIPE_CREATE_ERROR);
         DEBUG_OUTPUT( "pipe create fail = %d, %s\n", errno, strerror(errno));
         finalize(__FUNCTION__, __LINE__);
         return -1;
     }
+DEBUG_OUTPUT(" \n ");
 
     // Warning : child process
     if( 0 == (pid = fork()) )
@@ -237,7 +242,9 @@ DEBUG_OUTPUT( "get data=> %s\n", dbName);
             memset(buf, 0x0, BUF_LEN);
 
             // limit output in (*pRows x 2)
-            sprintf(buf, "%s %d;", CMD_QUERY_STOCK, (unsigned )(*pRows * 2));
+            // but api will output 1 title line
+            // get (*pRows x 2) + 1 lines. and dont send the first line
+            sprintf(buf, "%s %d;", CMD_QUERY_STOCK, (unsigned )(*pRows * 2 +1));
 DEBUG_OUTPUT( "Input cmd: %s\n", buf);
             ret = sqlite3_get_table(db , buf, &ptable, &rows, &cols, &errMsg);
             if( SQLITE_OK == ret || SQLITE_ROW == ret || SQLITE_DONE == ret )
@@ -246,6 +253,7 @@ fprintf(stderr, "rows = %d\tcols =%d\n", rows, cols);
 
                 // find the maximum element to set the size arguemnt
                 size = 0;
+                // the first line is title, ignopre it
                 for(i = 1 ; i< rows ; i++)
                 {
                     for(j = 0 ; j< cols; j++)
@@ -254,14 +262,13 @@ fprintf(stderr, "rows = %d\tcols =%d\n", rows, cols);
                             size = strlen(ptable[i*cols+j]) + 1; // 1 for '\0'
                     }
                 }
-
 DEBUG_OUTPUT( "the maximum size of element = %u\n", size);
 
                 // notify parent allocte memory
                 memset(buf, 0x0, BUF_LEN);
 
-                // row , columen, size
-                sprintf(buf, "%d,%d,%d"END_SYMBOL, rows, cols, size);
+                // row , columen, size and ignore titile line
+                sprintf(buf, "%d,%d,%d"END_SYMBOL, rows-1, cols, size);
                 if(0 > (ret = write( pipefd[WRITE_SIDE], (const void *)buf, strlen(buf) )))
                 {
                     DEBUG_OUTPUT( "Write error occurs = %d, err = %d, %s\n", ret, errno, strerror(errno));
@@ -274,6 +281,7 @@ DEBUG_OUTPUT( "pipe create = %d, %d\n", pipefd[0], pipefd[1]);
                     // skip the first line  : date      stockNum        tradeNum        volume      open        high        low     close       sign        diff        buy     buyVol      sell        sellVol     epr
                     for(i = 1 ; i< rows ; i++)
                     {
+DEBUG_OUTPUT( "rows 1st is %d= %s\n", i*cols, ptable[i*cols]);
                         for(j = 0 ; j< cols; j++)
                         {
                             len += ret = write(pipefd[WRITE_SIDE], ptable[i*cols+j], strlen(ptable[i*cols+j]));
@@ -313,6 +321,11 @@ DEBUG_OUTPUT( "pipe create = %d, %d\n", pipefd[0], pipefd[1]);
             return 0;
         else
             return -1;
+    }
+    else if(pid<0)
+    {
+        output_err(FORK_ERROR);
+        return -1;
     }
 
     // parent
@@ -363,7 +376,7 @@ DEBUG_OUTPUT("[Parent] : close write pipe \n");
     {
 DEBUG_OUTPUT("[Parent] :  %s\n", ptr);
         rows = strtol(ptr, NULL, 10);
-        rows --;  //remopve the line includes title.
+       // rows --;  //remopve the line includes title.
 DEBUG_OUTPUT("[Parent] :  rows = %d\n", rows);
         if(0 < rows)
         {
@@ -419,7 +432,8 @@ fprintf( stderr, "[%d][%d] %s\t", i, j, (char *)(pCurr+(i*cols*size)+j*size));
                         k++;
                         if(k >= BUF_LEN)
                         {
-                            DEBUG_OUTPUT( "[parent] : buf overflow !!!! \n");
+
+                            DEBUG_OUTPUT( "[parent] : buf overflow !!!! dump>> %s\n", buf);
                             i = rows+1;
                             j = cols+1;
                             ret = -1;
@@ -735,43 +749,58 @@ DEBUG_OUTPUT( "output file :%s\n", outputFile);
             for(i = 0 ; i< strlen(linebuf); i++)
             {
                 if( !isalnum( linebuf[i]) )
+                {
+DEBUG_OUTPUT(" \n ");
                     break;
+                }
             }
+DEBUG_OUTPUT(" \n ");
             // add postfix ".sl3"
             linebuf[i] = '.';
             linebuf[i+1] = 's';
             linebuf[i+2] = 'l';
             linebuf[i+3] = '3';
             linebuf[i+4] = '\0';
+DEBUG_OUTPUT(" \n ");
 
             sprintf( buf,"%s/%s", folderPath, linebuf );
 
+DEBUG_OUTPUT(" \n ");
             // open specified stock's db
             // limit database output be (day*2) days.
             rows = day;
-            if((ret = get_stock_daily_data(buf, &pStorckStrData, &rows, &cols, &size) )> 0)
+DEBUG_OUTPUT(" \n ");
+            ret = get_stock_daily_data(buf, &pStorckStrData, &rows, &cols, &size);
+            if(ret > 0)
             {
 DEBUG_OUTPUT("total %d rows , %d cols , size %d\n", rows, cols, size);
                 convType(pStorckStrData, rows, cols, size, &pStockDigitData );
+DEBUG_OUTPUT(" \n ");
                 if(NULL != pStockDigitData)
                 {
                     // open indicator
                     if(0 < open_shared_lib( pathDynamicLib ))
                     {
-    DEBUG_OUTPUT("pass pStockDigitData %p\n", pStockDigitData);
-    DEBUG_OUTPUT("open %f\n", pStockDigitData->open);
+DEBUG_OUTPUT("pass pStockDigitData %p\n", pStockDigitData);
+DEBUG_OUTPUT("open %f\n", pStockDigitData->open);
                         // call the indicator, indicator()
                         // pass stock data, day parameter, output file name
                         indicator(&pStockDigitData, rows, day, days1, outputFile);
+DEBUG_OUTPUT(" \n ");
                     }
+DEBUG_OUTPUT(" \n ");
                 }
+DEBUG_OUTPUT(" \n ");
             }
+            else
+DEBUG_OUTPUT(" \n ");
         }
 
         finalize( __FUNCTION__ , __LINE__);
     }
     else
     {
+        output_err(FILE_NOT_FOUND);
         DEBUG_OUTPUT("Input File doesn't exist\n");
     }
 
