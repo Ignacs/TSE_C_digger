@@ -10,20 +10,27 @@
 #define EXECNAME
 
 // debug flag
-#define SQL_DBG 0
+#define SQL_DBG 1
 
 #define PATH_LEN 512
 #define URL_LEN 4096
 #define FILENAME_LEN 256
 
+#define ABNORMAL_FILE_SIZE      32
+#define FILESIZE_TRADEDAY       400
+
 // database command
-#define CMD_CREATE_TABLE    "CREATE TABLE IF NOT EXISTS TSETradeDay( date int, tradingDay bit);"
+#define CMD_CREATE_TABLE    "CREATE TABLE IF NOT EXISTS TSETradeDay( date int PRIMARY KEY NOT NULL UNIQUE, tradingDay bit);"
+// UPDATE TSETradeDay set tradingDay = 0 where date=1051109;
+#define CMD_UPDATE_TABLE    "UPDATE TSETradeDay set tradingDay ="
+#define CMD_DATE            " where date="
+
 #define CMD_INSERT_TABLE    "INSERT INTO TSETradeDay VALUES"
 #define CMD_QUERY_TABLE     "SELECT * FROM TSETradeDay;"
 
-//////////////////////////////////////////////////////////////// 
-// Target web site string  
-// older and not workable URL 
+////////////////////////////////////////////////////////////////
+// Target web site string
+// older and not workable URL
 // char *strURL1A="http://www.twse.com.tw/ch/trading/exchange/MI_INDEX/genpage/Report";
 // char *strURL1B="ALLBUT0999_1.php?select2=ALLBUT0999&chk_date=";
 
@@ -41,13 +48,13 @@ char *strURL3B="&selectType=ALLBUT0999";
 // 下載的資料天數
 static int dayBack=1;
 //  目前下載的天數
-static int currentDayBack; 
+static int currentDayBack;
 // 指定的股號
 int numStock;
 
-// reference to database 
+// reference to database
 sqlite3 *db = NULL;
-// reference to table 
+// reference to table
 char **table = NULL;
 //////////////////////////////////////////////////////////////////////////
 // Declaration
@@ -56,7 +63,7 @@ void usage();
 size_t write_data(void* ptr, size_t size, size_t nmemb, FILE *stream)
 {
     size_t written = fwrite (ptr, size, nmemb, stream);
-    return written ; 
+    return written ;
 }
 
 void closeDB()
@@ -71,7 +78,7 @@ void closeDB()
 
 int main(int argc, char **argv)
 {
-    // output compiled date and time 
+    // output compiled date and time
     DEBUG_OUTPUT("Compiled date : \t[%s  %s] \n", __DATE__, __TIME__);
 
     int rows=0, cols=0;
@@ -85,6 +92,9 @@ int main(int argc, char **argv)
     struct tm  time_ROC;
     struct stat st;
     char yearROCFormat[4];
+#define INVAILD 0
+#define VAILD 1
+    int redownload = INVAILD;
 
     // char outputPATH[(unsigned int)strlen(strURL1A) + (unsigned int)strlen(strURL2A)+256];
     char outputPath[PATH_LEN];
@@ -96,14 +106,14 @@ int main(int argc, char **argv)
     CURL *curl=NULL;
     CURLcode res;
 
-    // check arguments, 
+    // check arguments,
     switch(argc)
     {
-        case 3: 
+        case 3:
         {
             break;
         }
-#if 0 // not supported 
+#if 0 // not supported
         case  4:
         {
             numStock = atoi(argv[3]);
@@ -112,7 +122,7 @@ int main(int argc, char **argv)
             exit(0);
             break;
         }
-#endif 
+#endif
         default:
         {
             output_err(ARG_NOT_ENOUGH);
@@ -146,7 +156,7 @@ int main(int argc, char **argv)
     sprintf(cmd, "%s/%s", outputPath, TSE_DATE_CLASSIFIC);
 
     /* open sqlite3 database */
-    if (sqlite3_open_v2(cmd, &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL)) 
+    if (sqlite3_open_v2(cmd, &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, NULL))
     {
         output_err(DB_NOT_FOUND);
         closeDB();
@@ -177,11 +187,11 @@ int main(int argc, char **argv)
 
     DEBUG_OUTPUT("-------------------------------Begin-------------------------------\n");
 
-    
     //從當天開始倒數
     for(i = 0; i< dayBack; i++)
     {
-        DEBUG_OUTPUT("Try download each data until countdown over \n");
+        redownload = INVAILD;
+        DEBUG_OUTPUT("[%d]th\n", i+1);
         //其中下載的url格式牽扯到時間，尤其是民國的格式
 
         //TODO:西元2000年前後的格式不一樣，目前實作到2000之後的，不包含2000年
@@ -192,11 +202,11 @@ int main(int argc, char **argv)
         // 也許1000年之後是XXXX
         if( time_ROC.tm_year>100 )
         {
-            // mark 2016/10/22 
+            // mark 2016/10/22
             // memset(yearROCFormat, 0x0, sizeof(outputFile));
             // sprintf(yearROCFormat  ,"%d", time_ROC.tm_year);
         }
-        else 
+        else
         {
             DEBUG_OUTPUT("ROC year not support\n");
             output_err(ROC_YEAR_NOT_SUPPORT);
@@ -208,21 +218,36 @@ int main(int argc, char **argv)
         memset(outputFile, 0x0, sizeof(outputFile));
         sprintf(outputFile, "%s/%03d%02d%02d.csv", outputPath, time_ROC.tm_year, time_ROC.tm_mon, time_ROC.tm_mday);
         DEBUG_OUTPUT("output file %s\n", outputFile);
-        if(stat(outputFile, &st) < 0) // 檔案不存在才抓
+        if(stat(outputFile, &st) < 0 || (ABNORMAL_FILE_SIZE > (int)st.st_size)) // 檔案不存在才抓 or file's size is abnormal
         {
+            // check the size of file, download again if too small.
+            DEBUG_OUTPUT("Check file size: %d\n", (int)st.st_size);
+            if(ABNORMAL_FILE_SIZE > (int)st.st_size)
+                redownload = VAILD;
+
             DEBUG_OUTPUT("spell urll\n");
             memset(fetchURL, 0x0, sizeof(outputFile));
-            sprintf(fetchURL , "%s%03d%%2F%02d%%2F%02d%s", 
+            sprintf(fetchURL , "%s%03d%%2F%02d%%2F%02d%s",
                             strURL3A,
                             time_ROC.tm_year,
                             time_ROC.tm_mon,
                             time_ROC.tm_mday,
                             strURL3B);
+            // download this day's data.
+            ret = 1;
+        }
+        else
+        {
+            DEBUG_OUTPUT("File exists\n");
+        }
 
+        // download if necessary.
+        if( 1 == ret )
+        {
             DEBUG_OUTPUT("Download url [%s]\n", fetchURL);
             // sprintf(cmd, "curl -O %s -o %s", outputFile
             //
-            // init curl 
+            // init curl
             curl = curl_easy_init();
             if(curl)
             {
@@ -234,7 +259,7 @@ int main(int argc, char **argv)
                     curl_easy_setopt(curl, CURLOPT_URL, fetchURL);
                     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_data);
                     curl_easy_setopt(curl, CURLOPT_WRITEDATA, fp);
-                    curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, cmd); 
+                    curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, cmd);
                     res = curl_easy_perform(curl);
                     if(CURLE_OK != res )
                     {
@@ -258,8 +283,6 @@ int main(int argc, char **argv)
                 }
             }
         }
-        else 
-            DEBUG_OUTPUT("File exists\n");
 
         // check the size  of file, small than 400 bytes should be not a trading day.
         DEBUG_OUTPUT("Check file %s's size\n", outputFile);
@@ -267,24 +290,23 @@ int main(int argc, char **argv)
         if(0 == (ret = stat(outputFile, &st) ))
         {
             DEBUG_OUTPUT("File size: %d\n", (int)st.st_size);
+            memset(cmd, 0x0, sizeof(cmd));
             // This day not a trading day.
-            if(400 > st.st_size) 
+            if( FILESIZE_TRADEDAY > st.st_size)
             {
                 DEBUG_OUTPUT("Date : %03d%02d%02d not a trading day, ignore it\n", time_ROC.tm_year, time_ROC.tm_mon, time_ROC.tm_mday);
-                // ignore this day 
+                // ignore this day
                 i--;
                 // reocde holiday
                 // sprintf(cmd , "echo %03d%02d%02d>> %s/%s", time_ROC.tm_year, time_ROC.tm_mon, time_ROC.tm_mday, outputPath,FILE_HOLIDAY);
                 // output to sqlite db
-                memset(cmd, 0x0, sizeof(cmd));
                 sprintf(cmd, "%s( %03d%02d%02d , 0 )", CMD_INSERT_TABLE, time_ROC.tm_year, time_ROC.tm_mon, time_ROC.tm_mday );
             }
-            else 
+            else
             {
                 // reocde trading day.
                 // sprintf(cmd , "echo %03d%02d%02d>> %s/%s", time_ROC.tm_year, time_ROC.tm_mon, time_ROC.tm_mday, outputPath, FILE_TRADING_DAY);
                 // output to sqlite db
-                memset(cmd, 0x0, sizeof(cmd));
                 sprintf(cmd, "%s( %03d%02d%02d , 1 )", CMD_INSERT_TABLE, time_ROC.tm_year, time_ROC.tm_mon, time_ROC.tm_mday );
             }
 
@@ -298,10 +320,31 @@ int main(int argc, char **argv)
             if( SQLITE_OK != ret && SQLITE_ROW != ret && SQLITE_DONE != ret )
             {
                 output_err(DB_INSERT_FAIL);
-                DEBUG_OUTPUT("Cause: \t[%s]\n", errMsg);
+                DEBUG_OUTPUT("Cause: \t%d :[%s]\n", ret, errMsg);
+                //19 :[UNIQUE constraint failed: TSETradeDay.date]↵ and the record is from redownload.
+                if(19 == ret && redownload)
+                {
+                    memset(cmd, 0x0, sizeof(cmd));
+                    if( FILESIZE_TRADEDAY < st.st_size)
+                    {
+                        sprintf(cmd, "%s 1 %s%03d%02d%02d;", CMD_UPDATE_TABLE, CMD_DATE, time_ROC.tm_year, time_ROC.tm_mon, time_ROC.tm_mday );
+                    }
+                    else
+                    {
+                        sprintf(cmd, "%s 0 %s%03d%02d%02d;", CMD_UPDATE_TABLE, CMD_DATE, time_ROC.tm_year, time_ROC.tm_mon, time_ROC.tm_mday );
+                    }
+#if SQL_DBG
+                    DEBUG_OUTPUT("Execute cmd [%s]\n", cmd);
+#endif //SQL_DBG
+                    ret = sqlite3_exec(db, cmd, NULL, NULL, &errMsg);
+                    if( SQLITE_OK != ret && SQLITE_ROW != ret && SQLITE_DONE != ret )
+                    {
+                        DEBUG_OUTPUT("Cause: \t%d :[%s]\n", ret, errMsg);
+                    }
+                }
             }
         }
-        else 
+        else
         {
             output_err(FILE_NOT_FOUND);
             DEBUG_OUTPUT("%s\n", strerror(errno));
@@ -309,7 +352,7 @@ int main(int argc, char **argv)
 
         DEBUG_OUTPUT("-------------------------------Next one-------------------------------\n");
         // decreasing date
-        // NOTE: satauday may be a trading day. 
+        // NOTE: satauday may be a trading day.
         time_ROC.tm_mday--;
         if(0 >= time_ROC.tm_mday)
         {
@@ -318,7 +361,7 @@ int main(int argc, char **argv)
             DEBUG_OUTPUT("Previous month\n");
             if(0 >= time_ROC.tm_mon)
             {
-                time_ROC.tm_year--; 
+                time_ROC.tm_year--;
                 time_ROC.tm_mon =12;
                 DEBUG_OUTPUT("Previous year\n");
             }
@@ -342,11 +385,11 @@ int main(int argc, char **argv)
     }
     else
     {
-        for (i=0;i<rows;i++) 
+        for (i=0;i<rows;i++)
         {
-            for (j=0;j<cols;j++) 
+            for (j=0;j<cols;j++)
                  DEBUG_OUTPUT("%s\t", table[i*cols+j]);
-            DEBUG_OUTPUT("\n");
+            fprintf(stderr, "\n");
         }
     }
 #endif
@@ -358,5 +401,3 @@ void usage()
 {
     printf("%s <amount of day to download> <output folder>  \n", __FILE__);
 }
-
-
