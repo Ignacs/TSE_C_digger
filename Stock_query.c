@@ -610,7 +610,7 @@ void initialize()
 int main(int argc, char **argv)
 {
     struct stat st;
-    char linebuf[CMD_LEN];
+    char linebuf[CMD_LEN], stockID[CMD_LEN];
     char folderPath[PATH_LEN];
     char inputFile[FILENAME_LEN];
     char outputFile[FILENAME_LEN];
@@ -740,6 +740,7 @@ DEBUG_OUTPUT( "output file :%s\n", outputFile);
         DEBUG_OUTPUT("------------------- Check %s -----------------------------\n", inputFile);
 #endif
         memset(linebuf, 0x0, CMD_LEN);
+        memset(stockID, 0x0, CMD_LEN);
         // specified stock
         while( NULL != (ptr = fgets(linebuf, CMD_LEN, inputFp)))
         {
@@ -756,11 +757,14 @@ DEBUG_OUTPUT(" \n ");
             }
 DEBUG_OUTPUT(" \n ");
             // add postfix ".sl3"
+            strcpy(stockID, linebuf);
+
             linebuf[i] = '.';
             linebuf[i+1] = 's';
             linebuf[i+2] = 'l';
             linebuf[i+3] = '3';
             linebuf[i+4] = '\0';
+
 DEBUG_OUTPUT(" \n ");
 
             sprintf( buf,"%s/%s", folderPath, linebuf );
@@ -785,7 +789,7 @@ DEBUG_OUTPUT("pass pStockDigitData %p\n", pStockDigitData);
 DEBUG_OUTPUT("open %f\n", pStockDigitData->open);
                         // call the indicator, indicator()
                         // pass stock data, day parameter, output file name
-                        indicator(&pStockDigitData, rows, day, days1, outputFile);
+                        indicator(stockID, &pStockDigitData, rows, day, days1, outputFile);
 DEBUG_OUTPUT(" \n ");
                     }
 DEBUG_OUTPUT(" \n ");

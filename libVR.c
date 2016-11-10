@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include "header.h"
-#define TODAY_PRIV      2 // the lastday privriledge weigth
+#define LAST_DATA_PRIV      2 // the lastday privriledge weigth
 
 //  line data sequence: date      stockNum        tradeNum        volume      open        high        low     close       sign        diff        buy     buyVol      sell        sellVol     epr
 //
@@ -17,7 +17,7 @@ typedef struct dataCal
 // In N days, <Total stock volumn that close price upper than yesterday> / <Total stock volume that close price lower than yesterday>
 //
 //
-// This library will calculate stock's VRMA
+// This library will calculate stock's VREMA
 //
 //
 double calculate_VR(struct stock_daily *pDataCal, unsigned int day)
@@ -68,9 +68,9 @@ double calculate_VR(struct stock_daily *pDataCal, unsigned int day)
 //
 //
 // Volume Ratio Moving Average
-// In N days, ((N VR)*2() + (N-1)VRMA*(N-2))/ (N+1)
-// For more reliablity,  result must compare (N) to (N-VRMA) days.
-int indicator(struct stock_daily **pStockData, int length, int dayVR, int dayVRMA, char *outputFile)
+// In N days, ((N VR)*2() + (N-1)VREMA*(N-2))/ (N+1)
+// For more reliablity,  result must compare (N) to (N-VREMA) days.
+int indicator(char *stockID, struct stock_daily **pStockData, int length, int dayVR, int dayVREMA, char *outputFile)
 {
     FILE *pOoutFp = NULL;
     char buf[BUFF_LEN];
@@ -78,7 +78,10 @@ int indicator(struct stock_daily **pStockData, int length, int dayVR, int dayVRM
     int ret = 0;
     struct stock_daily *pData=*pStockData;
     double aVR[LEN_DAYS_ORD] = {0.0};
-    double dVRMA1 = 0.0, dVRMA2 = 0.0;
+    double dVREMA1 = 0.0, dVREMA2 = 0.0;
+    double dVRSMA=0;
+    unsigned int pastPri = 0;
+    unsigned int currOffsetDay = 0;
 
     if(NULL == pStockData)
     {
@@ -87,25 +90,25 @@ int indicator(struct stock_daily **pStockData, int length, int dayVR, int dayVRM
     }
 
     DEBUG_OUTPUT( "==============Call library  = %s===============\n", __FILE__);
-    DEBUG_OUTPUT( "dayMA = %d\n",dayVRMA);
-    if(0 >= dayVRMA)
+    DEBUG_OUTPUT( "dayMA = %d\n",dayVREMA);
+    if( LAST_DATA_PRIV >= dayVREMA )
     {
-        DEBUG_OUTPUT( "ERR: Too short \n");
+        DEBUG_OUTPUT( "ERR: Too short than priority :%d\n", LAST_DATA_PRIV);
         return 0;
     }
 
     DEBUG_OUTPUT( "dayVR = %d\n", dayVR);
-    // if VR is too short to calculate VRMA.
-    if(dayVRMA >= dayVR && LEN_DAYS_ORD < dayVR)
+    // if VR is too short to calculate VREMA.
+    if(dayVREMA >= dayVR && LEN_DAYS_ORD < dayVR)
     {
-        DEBUG_OUTPUT( "ERR: Too short than VRMA\n");
+        DEBUG_OUTPUT( "ERR: Too short than VREMA\n");
         return 0;
     }
 
     DEBUG_OUTPUT( "length = %d\n", length);
     // if history data is too short to calculate.
-    // for precesion , the result must compare (dayVR+dayVRMA+1) days.
-    if( (dayVR+dayVRMA+1) >= length )
+    // for precesion , the result must compare (dayVR+dayVREMA+1) days.
+    if( (dayVR+dayVREMA+1) >= length )
     {
         DEBUG_OUTPUT( "ERR: history too short to calculate!!\n");
         return 0;
@@ -114,39 +117,61 @@ int indicator(struct stock_daily **pStockData, int length, int dayVR, int dayVRM
     checkFileAbs(outputFile, (char *)buf, BUFF_LEN);
 
     DEBUG_OUTPUT( "outputFile = %s\n", buf);
-    pOoutFp = fopen(buf, "w+");
+    pOoutFp = fopen(buf, "a+");
     if( pOoutFp )
     {
         DEBUG_OUTPUT( "File open successfully\n");
 
-        // VR need n+1 days to calculate
-        for(i = 0; i <= (dayVR); i++)
+        // calculate the VR of each day.
+        // VR needn (dayVR+dayVREMA+1) days to calculate
+        for(i = 0; i <= (dayVR+dayVREMA); i++)
         {
             aVR[i] = calculate_VR((*pStockData)+i, dayVR);
             DEBUG_OUTPUT( "date %lu (%d) days ago's VR= %f\n", ((*pStockData)+i)->date, i, aVR[i]);
         }
-        /*
+        DEBUG_OUTPUT( "========================================\n");
 
-        //  Indicator must get (dayVRMA+1) for accuracy
-        // calculate VRMA from today to (dayVRMA-1)
-        // First, calculate the (dayVRMA) ago
-        DEBUG_OUTPUT( "dVRMA1 (%d) days ago = %f\n", dayVRMA, dVRMA1);
-        for(i = (dayVRMA-1); i >= 0; i--)
+        // For accuracy, Indicator must all history VREMA, but it is impossible
+        // Just get apporiate value for initial value. Here use the SMA of (dayVREMA+1)th day
+        // First, calculate the SMA of (dayVREMA+1)th day ago
+        // But the EMA of yesterday still need the EMA of (dayVREMA) days from 1 to (dayVREMA+1) and the (dayVREMA+2)th day's SMA
+        for( currOffsetDay = i = dayVREMA + 2, dVRSMA = 0.0; i < (dayVREMA+2+dayVR) ; i++ )
         {
-            //  calculate VRMA
-            dVRMA1 = ((dVRMA1*(dayVRMA-1)) + (calculate_VR((*pStockData)+i, dayVR)*TODAY_PRIV)) / (dayVRMA+1);
-            DEBUG_OUTPUT( "dVRMA1 (%d) days ago =%f\n", i, dVRMA1);
+            DEBUG_OUTPUT( "date %lu (%d)th days ago's VR= %f\n", ((*pStockData)+i)->date, i+1, aVR[i]);
+            dVRSMA += aVR[i];
         }
+        dVRSMA = (double)dVRSMA/(dayVR);
+        DEBUG_OUTPUT( "SMA = %f\n", dVRSMA);
 
-        // calculate
-        DEBUG_OUTPUT( "dVRMA1 (%d) days ago = %f\n", dayVRMA, dVRMA2);
-        for(i = (dayVRMA-1); i >= 0; i--)
+        // the pervious day's prioriorty.
+        pastPri = (dayVREMA-LAST_DATA_PRIV+1);
+
+        // the EMA initialize from SMA
+        currOffsetDay--;
+        dVREMA2 = (( aVR[currOffsetDay] * LAST_DATA_PRIV ) + ( dVRSMA * pastPri )) / ( dayVREMA + 1 );
+        DEBUG_OUTPUT( "(%d)th days =%f\n", currOffsetDay+1, dVREMA2);
+        DEBUG_OUTPUT( "date %lu (%d)th days ago's VR= %f\n", ((*pStockData)+currOffsetDay)->date, currOffsetDay+1, aVR[currOffsetDay]);
+
+        // VRMA of yesterday
+        currOffsetDay--;
+        for(i = (currOffsetDay); i > 0; i--)
         {
-            //  calculate VRMA
-            dVRMA1 = ((dVRMA1*(dayVRMA-1)) + (calculate_VR((*pStockData)+i, dayVR)*TODAY_PRIV)) / (dayVRMA+1);
-            DEBUG_OUTPUT( "dVRMA1 (%d) days ago =%f\n", i, dVRMA1);
+            //  calculate VREMA
+            dVREMA2 = ( (aVR[i] * LAST_DATA_PRIV) + (dVREMA2 * pastPri) ) / (dayVREMA+1);
+            DEBUG_OUTPUT( "(%d)th days ago =%f\n", i+1, dVREMA2);
+            DEBUG_OUTPUT( "date %lu (%d)th days ago's VR= %f\n", ((*pStockData)+i)->date, i+1, aVR[i]);
         }
-        */
+        DEBUG_OUTPUT( "yesterday:  days = %f\n",  dVREMA2);
+
+        // VRMA of today
+        // calculate VREMA from (dayVREMA-1) to today
+        // the EMA of day(dayVREMA)
+        dVREMA1 = (( aVR[0] * LAST_DATA_PRIV) + ( dVREMA2 * pastPri)) / ( dayVREMA + 1 );
+        DEBUG_OUTPUT( " EMA of Today= %f\n",  dVREMA1);
+        DEBUG_OUTPUT( "today's VR= %f\n",  aVR[0]);
+
+        if(dVREMA1 >= dVREMA2)
+            fprintf(pOoutFp, "%s", stockID);
 
 
         fclose(pOoutFp);
