@@ -63,6 +63,7 @@ typedef enum{
     ARGU_NOT_MATCH,
     PIPE_CREATE_ERROR,
     FORK_ERROR,
+    DYNLIB_OPEN_FAIL,
 }errList;
 
 void output_err(unsigned int err)
@@ -129,6 +130,9 @@ void output_err(unsigned int err)
             break;
         case WORK_FLOW:
             DEBUG_OUTPUT("work flow handle error : Can't go ahead\n");
+            break;
+        case DYNLIB_OPEN_FAIL:
+            DEBUG_OUTPUT("Dynamic library open error .\n");
             break;
         default:
             DEBUG_OUTPUT("General error : %d\n", err);
@@ -239,8 +243,16 @@ static int openDB(char *pathDB, int rw, sqlite3 **db)
     return ret;
 }
 
-void close_db(sqlite3 *db, char **table)
+void close_db( sqlite3 *db, char **table, char **table2 )
 {
+    /* free */
+    if(NULL != table2)
+    {
+        DEBUG_OUTPUT("clear table \n" );
+        sqlite3_free_table(table2);
+        table =NULL;
+    }
+
     /* free */
     if(NULL != table)
     {
